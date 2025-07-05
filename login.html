@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detectus - Xác Thực</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔐</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Chakra Petch', sans-serif; 
+            background-color: #0D1117; 
+            color: #E6EDF3; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        #background-animation {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            overflow: hidden;
+        }
+        .star {
+            position: absolute;
+            background-color: #58A6FF;
+            border-radius: 50%;
+            opacity: 0;
+            animation: animate-star 10s linear infinite;
+        }
+        @keyframes animate-star {
+            0% { opacity: 0; transform: translateY(0) scale(0.5); }
+            20%, 80% { opacity: 0.7; }
+            100% { opacity: 0; transform: translateY(-100px) scale(1); }
+        }
+        .auth-card { 
+            background-color: rgba(22, 27, 34, 0.85); 
+            backdrop-filter: blur(10px); 
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(139, 148, 158, 0.2); 
+            width: 100%; 
+            max-width: 450px;
+            position: relative;
+            z-index: 1;
+        }
+        .text-glow { color: #58A6FF; text-shadow: 0 0 8px rgba(88, 166, 255, 0.5); }
+        .web3-btn { background: linear-gradient(90deg, #0052CC, #4C9AFF); border: none; box-shadow: 0 0 15px rgba(76, 154, 255, 0.5); transition: all 0.3s ease; }
+        .web3-btn:hover { box-shadow: 0 0 25px rgba(76, 154, 255, 0.7); transform: translateY(-2px); }
+        .web3-btn:disabled { background: #30363d; cursor: not-allowed; box-shadow: none; }
+        .web3-input { background-color: #010409; border: 1px solid #30363d; color: #E6EDF3; }
+        .tab-btn { border-bottom: 2px solid transparent; transition: all 0.3s ease; }
+        .tab-btn.active { color: #58A6FF; border-bottom-color: #58A6FF; }
+        .message-box { padding: 0.75rem; border-radius: 0.5rem; font-size: 0.875rem; text-align: center; }
+        .error-msg { background-color: rgba(248, 81, 73, 0.1); border: 1px solid rgba(248, 81, 73, 0.5); color: #f85149; }
+        .success-msg { background-color: rgba(63, 185, 80, 0.1); border: 1px solid rgba(63, 185, 80, 0.5); color: #3fb950; }
+    </style>
+</head>
+<body class="p-4">
+    <div id="background-animation"></div>
+    <div class="auth-card rounded-xl shadow-lg p-6 md:p-8">
+        <h1 class="text-4xl font-bold text-glow text-center mb-2">DETECTUS</h1>
+        <p class="text-center text-gray-400 mb-6">Đăng nhập để truy cập Bảng điều khiển</p>
+        <div class="flex border-b border-gray-700 mb-6">
+            <button id="login-tab-btn" class="tab-btn flex-1 py-2 font-bold active">Đăng Nhập</button>
+            <button id="register-tab-btn" class="tab-btn flex-1 py-2 font-bold">Đăng Ký</button>
+        </div>
+        <div id="message-container" class="mb-4 hidden"></div>
+        <form id="auth-form" class="space-y-6">
+            <div class="relative">
+                <label for="auth-wallet-address" class="font-semibold text-gray-300">Tên tài khoản (Ví):</label>
+                <input type="text" id="auth-wallet-address" class="web3-input w-full mt-1 p-3 rounded-lg" placeholder="Nhập tên tài khoản hoặc địa chỉ ví" required>
+            </div>
+            <div class="relative">
+                <label for="auth-password" class="font-semibold text-gray-300">Mật khẩu:</label>
+                <input type="password" id="auth-password" class="web3-input w-full mt-1 p-3 rounded-lg" placeholder="Nhập mật khẩu" required>
+            </div>
+            <button type="submit" id="submit-btn" class="w-full web3-btn text-white font-bold py-3 px-6 rounded-lg text-lg">
+                <span id="btn-text">Đăng Nhập</span>
+                <span id="btn-loader" class="hidden animate-spin">◌</span>
+            </button>
+        </form>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- CONFIG ---
+            const API_BASE_URL = 'http://localhost:3001'; // URL của server backend
+
+            // --- ELEMENTS ---
+            const loginTabBtn = document.getElementById('login-tab-btn');
+            const registerTabBtn = document.getElementById('register-tab-btn');
+            const authForm = document.getElementById('auth-form');
+            const submitBtn = document.getElementById('submit-btn');
+            const btnText = document.getElementById('btn-text');
+            const btnLoader = document.getElementById('btn-loader');
+            const walletInput = document.getElementById('auth-wallet-address');
+            const passwordInput = document.getElementById('auth-password');
+            const messageContainer = document.getElementById('message-container');
+            
+            // --- STATE ---
+            let isLoginMode = true;
+
+            // --- FUNCTIONS ---
+            function setMode(isLogin) {
+                isLoginMode = isLogin;
+                messageContainer.classList.add('hidden');
+                authForm.reset();
+                loginTabBtn.classList.toggle('active', isLogin);
+                registerTabBtn.classList.toggle('active', !isLogin);
+                btnText.textContent = isLogin ? 'Đăng Nhập' : 'Đăng Ký';
+            }
+
+            function showMessage(message, isError = true) {
+                messageContainer.textContent = message;
+                messageContainer.className = `message-box ${isError ? 'error-msg' : 'success-msg'}`;
+                messageContainer.classList.remove('hidden');
+            }
+
+            function setLoading(isLoading) {
+                if (isLoading) {
+                    submitBtn.disabled = true;
+                    btnText.classList.add('hidden');
+                    btnLoader.classList.remove('hidden');
+                } else {
+                    submitBtn.disabled = false;
+                    btnText.classList.remove('hidden');
+                    btnLoader.classList.add('hidden');
+                }
+            }
+            
+            // --- EVENT LISTENERS ---
+            loginTabBtn.addEventListener('click', () => setMode(true));
+            registerTabBtn.addEventListener('click', () => setMode(false));
+
+            authForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const username = walletInput.value.trim();
+                const password = passwordInput.value;
+
+                if (!username || !password) {
+                    showMessage("Vui lòng nhập đầy đủ thông tin.");
+                    return;
+                }
+                
+                setLoading(true);
+                messageContainer.classList.add('hidden');
+
+                const endpoint = isLoginMode ? '/login' : '/register';
+                const url = `${API_BASE_URL}${endpoint}`;
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ username, password }),
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        // Ném lỗi để block `catch` xử lý
+                        throw new Error(data.message || 'Đã có lỗi xảy ra.');
+                    }
+                    
+                    // Xử lý khi request thành công
+                    if (isLoginMode) {
+                        showMessage("Đăng nhập thành công! Đang chuyển hướng...", false);
+                        localStorage.setItem('loggedInUser', data.user.username);
+                        setTimeout(() => { window.location.href = 'app.html'; }, 1500);
+                    } else {
+                        showMessage("Đăng ký thành công! Vui lòng chuyển qua tab Đăng nhập.", false);
+                        setMode(true); // Tự động chuyển sang tab đăng nhập
+                    }
+
+                } catch (error) {
+                    showMessage(error.message);
+                } finally {
+                    setLoading(false);
+                }
+            });
+
+            // --- BACKGROUND ANIMATION ---
+            const background = document.getElementById('background-animation');
+            const starCount = 150;
+            for (let i = 0; i < starCount; i++) {
+                const star = document.createElement('div');
+                star.className = 'star';
+                const size = Math.random() * 2 + 1;
+                star.style.width = `${size}px`;
+                star.style.height = `${size}px`;
+                star.style.top = `${Math.random() * 100}%`;
+                star.style.left = `${Math.random() * 100}%`;
+                star.style.animationDelay = `${Math.random() * 10}s`;
+                star.style.animationDuration = `${Math.random() * 5 + 5}s`;
+                background.appendChild(star);
+            }
+        });
+    </script>
+</body>
+</html>
