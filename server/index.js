@@ -11,24 +11,12 @@ const PORT = process.env.PORT || 3001;
 
 // --- Middlewares ---
 
-// SỬA LỖI CORS: Đặt cors() làm middleware đầu tiên.
-// Điều này đảm bảo mọi request đến đều được xử lý CORS trước tiên.
-// --- Middlewares ---
-
-// Cấu hình CORS để cho phép frontend trên Netlify và localhost gọi tới
-const corsOptions = {
-  origin: [
-    'https://deluxe-lamington-13e60d.netlify.app', // Địa chỉ trang Netlify của bạn
-    'http://localhost:3000', // Cho phép chạy trên máy khi phát triển
-    'http://127.0.0.1:5500'  // Cho phép chạy bằng Live Server của VS Code
-  ]
-};
-app.use(cors(corsOptions));
+// SỬA LỖI CORS: Cho phép TẤT CẢ các yêu cầu từ bên ngoài.
+// Đây là cách đơn giản nhất để khắc phục lỗi "Failed to fetch".
+app.use(cors());
 
 // Cho phép Express đọc dữ liệu JSON từ body của request
 app.use(express.json());
-
-
 
 // --- Kết nối tới MongoDB ---
 mongoose.connect(process.env.MONGODB_URI)
