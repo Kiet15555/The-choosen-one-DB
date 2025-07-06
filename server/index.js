@@ -92,7 +92,7 @@ app.post('/register', async (req, res) => {
         
         // Gửi email chứa mã OTP
         await transporter.sendMail({
-            from: '"Detectus App" <onboarding@resend.dev>',
+             from: '"Detectus App" <noreply@detectus.xyz>',
             to: email,
             subject: 'Mã Kích Hoạt Tài Khoản Detectus',
             html: `<p>Chào bạn,</p><p>Mã OTP để kích hoạt tài khoản của bạn là: <strong>${otp}</strong></p><p>Mã này sẽ hết hạn sau 10 phút.</p>`

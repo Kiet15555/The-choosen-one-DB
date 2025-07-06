@@ -93,7 +93,6 @@
 <body class="antialiased">
     <div id="background-animation"></div>
 
-    <!-- Add a main loader for initial data fetching -->
     <div id="main-loader" class="flex items-center justify-center min-h-screen">
         <div class="loader"></div>
     </div>
@@ -157,7 +156,6 @@
                 <div class="glass-card rounded-xl shadow-lg p-6 md:p-8">
                     <h2 class="text-3xl font-bold text-center mb-2 text-glow">Lịch Sử Giao Dịch Của Bạn 📓</h2>
                     <div id="historyContainer" class="mt-6 max-h-96 overflow-y-auto space-y-4 pr-2">
-                        <!-- Loader for history section -->
                         <div id="history-loader" class="loader"></div>
                         <p id="no-history-msg" class="text-center text-gray-500 hidden">Chưa có giao dịch nào được thực hiện.</p>
                     </div>
@@ -208,12 +206,10 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', async () => {
-    // --- CONFIG & STATE ---
-    const API_BASE_URL = 'http://localhost:3001';
+    const API_BASE_URL = 'https://detectus.onrender.com';
     const loggedInUser = localStorage.getItem('loggedInUser');
-    let currentUserData = null; // State to hold user data from the server
+    let currentUserData = null;
 
-    // --- ELEMENTS ---
     const mainLoader = document.getElementById('main-loader');
     const appContainer = document.getElementById('app-container');
     const logoutBtn = document.getElementById('logoutBtn');
@@ -233,17 +229,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const txModalMessage = document.getElementById('tx-modal-message');
     const closeTxModalBtn = document.getElementById('close-tx-modal-btn');
 
-    // --- AUTHENTICATION CHECK ---
     if (!loggedInUser) {
-        window.location.href = 'login.html';
+        window.location.href = 'index.html';
         return;
     }
 
-    // --- CORE FUNCTIONS ---
-
-    /**
-     * Fetches user data from the server and initializes the dashboard.
-     */
     async function initializeApp() {
         try {
             const response = await fetch(`${API_BASE_URL}/user/${loggedInUser}`);
@@ -256,23 +246,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (error) {
             console.error("Fetch User Error:", error);
             alert(error.message);
-            logout(); // Log out if there's a critical error
+            logout();
         } finally {
-            // Hide main loader and show app content
             mainLoader.classList.add('hidden');
             appContainer.classList.remove('hidden');
         }
     }
 
-    /**
-     * Updates the entire UI based on the current currentUserData state.
-     */
     function updateDashboard() {
         if (!currentUserData) return;
 
         document.getElementById('loggedInUserDisplay').textContent = `Đã đăng nhập với tài khoản: ${currentUserData.username}`;
-
-        // Update wallet status section
         walletRiskStatus.textContent = currentUserData.risk;
         walletFrozenStatus.textContent = currentUserData.frozen ? 'Bị Đóng Băng' : 'Hoạt Động';
 
@@ -283,8 +267,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         walletFrozenStatus.className = currentUserData.frozen ? 'font-bold text-red-400' : 'font-bold text-teal-300';
 
-        // Update suspicious count progress bar
-        const suspiciousLimit = 3; // Assuming the limit is 3 for the UI
+        const suspiciousLimit = 3;
         const suspiciousPercentage = (currentUserData.suspiciousCount / suspiciousLimit) * 100;
         suspiciousCountBar.style.width = `${Math.min(suspiciousPercentage, 100)}%`;
         suspiciousCountText.textContent = `${currentUserData.suspiciousCount} / ${suspiciousLimit} lần vi phạm`;
@@ -292,14 +275,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderTransactionHistory();
     }
 
-    /**
-     * Renders the transaction history list from currentUserData.
-     */
     function renderTransactionHistory() {
         historyLoader.classList.add('hidden');
         const history = currentUserData.history || [];
         
-        // Clear old history items, but keep the loader and no-history message templates
         const itemsToRemove = Array.from(historyContainer.children).filter(
             el => el.id !== 'no-history-msg' && el.id !== 'history-loader'
         );
@@ -309,7 +288,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             noHistoryMsg.classList.remove('hidden');
         } else {
             noHistoryMsg.classList.add('hidden');
-            // Display transactions, newest first
             history.slice().reverse().forEach(tx => {
                 let statusClass, statusIcon;
                 switch(tx.status) {
@@ -329,16 +307,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                         </div>
                         <p class="text-sm text-gray-400 break-all"><b class="text-gray-500">Từ:</b> ${tx.sender}</p>
                         <p class="text-sm text-gray-400 break-all"><b class="text-gray-500">Đến:</b> ${tx.recipient}</p>
-                        <p class="text-xs text-gray-500 mt-2">${tx.timestamp}</p>
+                        <p class="text-xs text-gray-500 mt-2">${new Date(tx.timestamp).toLocaleString('vi-VN')}</p>
                     </div>`;
                 historyContainer.appendChild(txElement);
             });
         }
     }
 
-    /**
-     * Handles the transaction simulation and updates the server.
-     */
     async function handleSendTransaction() {
         const recipientId = document.getElementById('recipientWallet').value.trim();
         const amount = parseFloat(document.getElementById('amount').value);
@@ -348,74 +323,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        // Show loading modal
         txModal.classList.remove('hidden');
         txModalLoader.classList.remove('hidden');
         txModalResult.classList.add('hidden');
-
-        // --- Determine transaction outcome on the client-side ---
-        const suspiciousThreshold = 10;
-        const suspiciousLimit = 3;
-        
-        let txStatus = 'Thành Công';
-        let newRisk = currentUserData.risk;
-        let newSuspiciousCount = currentUserData.suspiciousCount;
-        let modalMessage = '';
-        let modalTitle = '';
-        let modalIcon = '';
-        let modalTitleClass = '';
-
-        const successIcon = `<svg class="w-16 h-16 mx-auto text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
-        const warningIcon = `<svg class="w-16 h-16 mx-auto text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>`;
-        const blockedIcon = `<svg class="w-16 h-16 mx-auto text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>`;
-
-        if (currentUserData.frozen || currentUserData.risk === 'Blacklisted') {
-            txStatus = 'Bị Chặn';
-            modalIcon = blockedIcon;
-            modalTitle = 'Giao Dịch Bị Chặn';
-            modalTitleClass = 'text-2xl font-bold mb-2 text-red-400';
-            modalMessage = `Giao dịch đã bị chặn. Ví gửi đang ở trạng thái ${currentUserData.risk === 'Blacklisted' ? 'Blacklisted' : 'Bị Đóng Băng'}.`;
-        } else {
-            const isHighValue = amount >= suspiciousThreshold;
-            if (isHighValue) {
-                newSuspiciousCount++;
-                txStatus = 'Bị Cảnh Báo';
-                modalIcon = warningIcon;
-                modalTitle = 'Giao Dịch Bị Cảnh Báo';
-                modalTitleClass = 'text-2xl font-bold mb-2 text-yellow-400';
-                modalMessage = `Giao dịch ${amount} ETH đã thành công, nhưng bị gắn cờ 'Đáng Ngờ' do vượt ngưỡng giá trị. Bộ đếm vi phạm của bạn đã tăng lên.`;
-            } else {
-                txStatus = 'Thành Công';
-                modalIcon = successIcon;
-                modalTitle = 'Giao Dịch Thành Công';
-                modalTitleClass = 'text-2xl font-bold mb-2 text-teal-400';
-                modalMessage = `Giao dịch ${amount} ETH đến ví ${recipientId} đã được xác nhận.`;
-            }
-
-            if (newSuspiciousCount >= suspiciousLimit) {
-                newRisk = 'Blacklisted';
-            } else if (newSuspiciousCount > 0) {
-                newRisk = 'Suspicious';
-            }
-        }
 
         const newTransaction = {
             sender: currentUserData.username,
             recipient: recipientId,
             amount,
-            status: txStatus,
-            timestamp: new Date().toLocaleString('vi-VN')
         };
 
-        // --- Send update to server ---
         try {
             const response = await fetch(`${API_BASE_URL}/update-user`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     username: currentUserData.username,
-                    risk: newRisk,
-                    suspiciousCount: newSuspiciousCount,
                     newTransaction: newTransaction
                 })
             });
@@ -423,45 +346,65 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!response.ok) {
                 throw new Error(data.message || 'Lỗi khi cập nhật giao dịch.');
             }
-            // Update local state with the authoritative response from the server
+            
             currentUserData = data.user;
             updateDashboard();
 
+            const lastTx = currentUserData.history[currentUserData.history.length - 1];
+            let modalIcon, modalTitle, modalMessage, modalTitleClass;
+            const successIcon = `<svg class="w-16 h-16 mx-auto text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+            const warningIcon = `<svg class="w-16 h-16 mx-auto text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>`;
+            const blockedIcon = `<svg class="w-16 h-16 mx-auto text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>`;
+
+            switch(lastTx.status) {
+                case 'Thành Công':
+                    modalIcon = successIcon;
+                    modalTitle = 'Giao Dịch Thành Công';
+                    modalTitleClass = 'text-2xl font-bold mb-2 text-teal-400';
+                    modalMessage = `Giao dịch ${lastTx.amount} ETH đến ví ${lastTx.recipient} đã được xác nhận.`;
+                    break;
+                case 'Bị Cảnh Báo':
+                     modalIcon = warningIcon;
+                    modalTitle = 'Giao Dịch Bị Cảnh Báo';
+                    modalTitleClass = 'text-2xl font-bold mb-2 text-yellow-400';
+                    modalMessage = `Giao dịch ${lastTx.amount} ETH đã thành công, nhưng bị gắn cờ 'Đáng Ngờ' do vượt ngưỡng giá trị. Bộ đếm vi phạm của bạn đã tăng lên.`;
+                    break;
+                case 'Bị Chặn':
+                    modalIcon = blockedIcon;
+                    modalTitle = 'Giao Dịch Bị Chặn';
+                    modalTitleClass = 'text-2xl font-bold mb-2 text-red-400';
+                    modalMessage = `Giao dịch đã bị chặn. Ví gửi đang ở trạng thái ${currentUserData.risk === 'Blacklisted' ? 'Blacklisted' : 'Bị Đóng Băng'}.`;
+                    break;
+            }
+             txModalIcon.innerHTML = modalIcon;
+             txModalTitle.textContent = modalTitle;
+             txModalTitle.className = modalTitleClass;
+             txModalMessage.textContent = modalMessage;
+
         } catch (error) {
             console.error("Update User Error:", error);
-            // If server update fails, show an error message
-            modalIcon = blockedIcon;
-            modalTitle = 'Lỗi Cập Nhật';
-            modalTitleClass = 'text-2xl font-bold mb-2 text-red-400';
-            modalMessage = `Không thể lưu giao dịch vào cơ sở dữ liệu. Lỗi: ${error.message}`;
+            txModalIcon.innerHTML = blockedIcon;
+            txModalTitle.textContent = 'Lỗi Cập Nhật';
+            txModalTitle.className = 'text-2xl font-bold mb-2 text-red-400';
+            txModalMessage.textContent = `Không thể lưu giao dịch vào cơ sở dữ liệu. Lỗi: ${error.message}`;
         } finally {
-            // Show result modal after a short delay
             setTimeout(() => {
                 txModalLoader.classList.add('hidden');
                 txModalResult.classList.remove('hidden');
-                txModalIcon.innerHTML = modalIcon;
-                txModalTitle.textContent = modalTitle;
-                txModalTitle.className = modalTitleClass;
-                txModalMessage.textContent = modalMessage;
-            }, 1000); // Simulate network delay
+            }, 1000);
         }
     }
 
-    /**
-     * Logs the user out.
-     */
     function logout() {
         localStorage.removeItem('loggedInUser');
-        window.location.href = 'login.html';
+        window.location.href = 'index.html';
     }
 
 
-    // --- EVENT LISTENERS ---
     logoutBtn.addEventListener('click', logout);
     sendTxBtn.addEventListener('click', handleSendTransaction);
     closeTxModalBtn.addEventListener('click', () => txModal.classList.add('hidden'));
 
-    // --- AI Analysis Section (unmodified) ---
     const analyzeWalletBtn = document.getElementById('analyzeWalletBtn');
     const walletAddressInput = document.getElementById('walletAddressInput');
     const aiLoader = document.getElementById('aiLoader');
@@ -514,10 +457,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
 
-    // --- INITIALIZATION ---
     await initializeApp();
 
-    // --- Background Animation (unmodified) ---
     const background = document.getElementById('background-animation');
     const starCount = 150;
     for (let i = 0; i < starCount; i++) {

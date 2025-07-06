@@ -100,7 +100,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     // --- CONFIG ---
-    const API_BASE_URL = 'https://detectus.onrender.com'; // Trỏ đến server đã deploy
+    const API_BASE_URL = 'https://detectus.onrender.com';
 
     // --- ELEMENTS ---
     const loginTabBtn = document.getElementById('login-tab-btn');
@@ -117,17 +117,17 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // --- STATE ---
     let isLoginMode = true;
-    let emailForOtpVerification = ''; // Lưu email đã đăng ký để gửi đi xác thực
+    let emailForOtpVerification = '';
 
     // --- FUNCTIONS ---
-    function showView(view) { // 'auth' hoặc 'otp'
-        messageContainer.classList.add('hidden'); // Ẩn thông báo khi chuyển view
+    function showView(view) {
+        messageContainer.classList.add('hidden');
         if (view === 'otp') {
             authForm.classList.add('hidden');
             tabsContainer.classList.add('hidden');
             otpForm.classList.remove('hidden');
             cardSubtitle.textContent = "Xác Thực Tài Khoản Của Bạn";
-        } else { // 'auth'
+        } else {
             authForm.classList.remove('hidden');
             tabsContainer.classList.remove('hidden');
             otpForm.classList.add('hidden');
@@ -168,10 +168,9 @@ document.addEventListener('DOMContentLoaded', () => {
     registerTabBtn.addEventListener('click', () => setMode(false));
     backToLoginBtn.addEventListener('click', () => showView('auth'));
 
-    // Xử lý form Đăng nhập / Đăng ký
     authForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const username = emailInput.value.trim(); // Đây là email
+        const username = emailInput.value.trim();
         const password = passwordInput.value;
 
         if (!username || !password) {
@@ -199,10 +198,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 showMessage("Đăng nhập thành công! Đang chuyển hướng...", false);
                 localStorage.setItem('loggedInUser', data.user.username);
                 setTimeout(() => { window.location.href = 'app.html'; }, 1500);
-            } else { // Chế độ đăng ký
+            } else {
                 showMessage(data.message, false);
-                emailForOtpVerification = username; // Lưu lại email để xác thực
-                showView('otp'); // Chuyển sang màn hình nhập OTP
+                emailForOtpVerification = username;
+                showView('otp');
             }
         } catch (error) {
             showMessage(error.message);
@@ -211,7 +210,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Xử lý form xác thực OTP
     otpForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const otp = otpInput.value.trim();
@@ -235,7 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             showMessage(data.message, false);
             setTimeout(() => {
-                showView('auth'); // Quay lại màn hình đăng nhập sau khi thành công
+                showView('auth');
             }, 2000);
 
         } catch(error) {
