@@ -4,27 +4,27 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
-const nodemailer = require('nodemailer'); // Thư viện để gửi email
+const nodemailer = require('nodemailer');
 
 // Khởi tạo ứng dụng Express
 const app = express();
 
 // --- Middlewares ---
 
-// Cho phép TẤT CẢ các yêu cầu từ bên ngoài để khắc phục lỗi "Failed to fetch"
+// SỬA LỖI CORS: Cho phép TẤT CẢ các yêu cầu từ bên ngoài.
 app.use(cors());
 
 // Cho phép Express đọc dữ liệu JSON từ body của request
 app.use(express.json());
 
 // --- Kết nối tới MongoDB ---
-// Chuỗi kết nối sẽ được đọc từ biến môi trường trên Vercel
+// Chuỗi kết nối sẽ được đọc từ biến môi trường
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log("SUCCESS: Connected to MongoDB!"))
   .catch((err) => console.error("ERROR: MongoDB connection failed.", err));
 
 // --- Cấu hình gửi Email với Resend ---
-// API Key sẽ được đọc từ biến môi trường trên Vercel
+// API Key sẽ được đọc từ biến môi trường
 const transporter = nodemailer.createTransport({
     host: 'smtp.resend.com',
     secure: true,
@@ -37,24 +37,23 @@ const transporter = nodemailer.createTransport({
 
 // --- Định nghĩa Schema (Cấu trúc dữ liệu cho User) ---
 const UserSchema = new mongoose.Schema({
-    username: { type: String, required: true, unique: true, lowercase: true }, // Sẽ lưu email ở đây
+    username: { type: String, required: true, unique: true, lowercase: true }, // Sẽ lưu email
     password: { type: String, required: true },
-    isVerified: { type: Boolean, default: false }, // Trạng thái xác thực
-    otp: { type: String }, // Lưu mã OTP đã được mã hóa
-    otpExpires: { type: Date }, // Thời gian hết hạn của OTP
+    isVerified: { type: Boolean, default: false },
+    otp: { type: String },
+    otpExpires: { type: Date },
     risk: { type: String, default: 'Safe' },
     frozen: { type: Boolean, default: false },
     suspiciousCount: { type: Number, default: 0 },
     history: { type: Array, default: [] }
 });
 
-// Tạo Model từ Schema
 const UserModel = mongoose.model("User", UserSchema);
 
 
 // --- API Endpoints (Routes) ---
 
-// 1. API Đăng ký người dùng mới (Gửi OTP)
+// API Đăng ký
 app.post('/register', async (req, res) => {
     try {
         const { username: email, password } = req.body;
@@ -71,9 +70,8 @@ app.post('/register', async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
         const hashedOtp = await bcrypt.hash(otp, salt);
-        const otpExpires = Date.now() + 10 * 60 * 1000; // OTP hết hạn sau 10 phút
+        const otpExpires = Date.now() + 10 * 60 * 1000;
 
-        // Nếu user đã tồn tại nhưng chưa xác thực, cập nhật lại OTP
         if (existingUser) {
             existingUser.password = hashedPassword;
             existingUser.otp = hashedOtp;
@@ -89,9 +87,8 @@ app.post('/register', async (req, res) => {
             await newUser.save();
         }
         
-        // Gửi email chứa mã OTP
         await transporter.sendMail({
-             from: '"Detectus App" <noreply@detectus.xyz>',
+            from: '"Detectus App" <noreply@detectus.xyz>',
             to: email,
             subject: 'Mã Kích Hoạt Tài Khoản Detectus',
             html: `<p>Chào bạn,</p><p>Mã OTP để kích hoạt tài khoản của bạn là: <strong>${otp}</strong></p><p>Mã này sẽ hết hạn sau 10 phút.</p>`
@@ -105,7 +102,7 @@ app.post('/register', async (req, res) => {
     }
 });
 
-// 2. API Xác thực OTP
+// API Xác thực OTP
 app.post('/verify-otp', async (req, res) => {
     try {
         const { email, otp } = req.body;
@@ -134,7 +131,7 @@ app.post('/verify-otp', async (req, res) => {
 });
 
 
-// 3. API Đăng nhập
+// API Đăng nhập
 app.post('/login', async (req, res) => {
     try {
         const { username: email, password } = req.body;
@@ -144,7 +141,6 @@ app.post('/login', async (req, res) => {
             return res.status(400).json({ message: "Sai email hoặc mật khẩu." });
         }
         
-        // KIỂM TRA MỚI: Yêu cầu tài khoản phải được xác thực
         if (!user.isVerified) {
             return res.status(403).json({ message: "Tài khoản chưa được kích hoạt. Vui lòng kiểm tra email để xác thực." });
         }
@@ -166,7 +162,7 @@ app.post('/login', async (req, res) => {
     }
 });
 
-// 4. API lấy toàn bộ thông tin của một người dùng (Không thay đổi)
+// API lấy thông tin người dùng
 app.get('/user/:username', async (req, res) => {
     try {
         const username = req.params.username.toLowerCase();
@@ -181,7 +177,7 @@ app.get('/user/:username', async (req, res) => {
     }
 });
 
-// 5. API để cập nhật thông tin người dùng (Không thay đổi)
+// API cập nhật thông tin người dùng
 app.post('/update-user', async (req, res) => {
     try {
         const { username, risk, suspiciousCount, newTransaction } = req.body;
