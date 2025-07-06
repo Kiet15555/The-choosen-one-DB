@@ -8,7 +8,6 @@ const nodemailer = require('nodemailer'); // Thư viện để gửi email
 
 // Khởi tạo ứng dụng Express
 const app = express();
-const PORT = process.env.PORT || 3001;
 
 // --- Middlewares ---
 
@@ -19,13 +18,13 @@ app.use(cors());
 app.use(express.json());
 
 // --- Kết nối tới MongoDB ---
-// Chuỗi kết nối sẽ được đọc từ biến môi trường trên Render
+// Chuỗi kết nối sẽ được đọc từ biến môi trường trên Vercel
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log("SUCCESS: Connected to MongoDB!"))
   .catch((err) => console.error("ERROR: MongoDB connection failed.", err));
 
 // --- Cấu hình gửi Email với Resend ---
-// API Key sẽ được đọc từ biến môi trường trên Render
+// API Key sẽ được đọc từ biến môi trường trên Vercel
 const transporter = nodemailer.createTransport({
     host: 'smtp.resend.com',
     secure: true,
@@ -204,7 +203,5 @@ app.post('/update-user', async (req, res) => {
     }
 });
 
-// --- Khởi động Server ---
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-});
+// THAY ĐỔI QUAN TRỌNG CHO VERCEL: Export 'app' để Vercel sử dụng
+module.exports = app;
