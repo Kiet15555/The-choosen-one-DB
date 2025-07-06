@@ -21,20 +21,10 @@
             overflow: hidden;
         }
         #background-animation {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 0;
-            overflow: hidden;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; overflow: hidden;
         }
         .star {
-            position: absolute;
-            background-color: #58A6FF;
-            border-radius: 50%;
-            opacity: 0;
-            animation: animate-star 10s linear infinite;
+            position: absolute; background-color: #58A6FF; border-radius: 50%; opacity: 0; animation: animate-star 10s linear infinite;
         }
         @keyframes animate-star {
             0% { opacity: 0; transform: translateY(0) scale(0.5); }
@@ -54,7 +44,7 @@
         .text-glow { color: #58A6FF; text-shadow: 0 0 8px rgba(88, 166, 255, 0.5); }
         .web3-btn { background: linear-gradient(90deg, #0052CC, #4C9AFF); border: none; box-shadow: 0 0 15px rgba(76, 154, 255, 0.5); transition: all 0.3s ease; }
         .web3-btn:hover { box-shadow: 0 0 25px rgba(76, 154, 255, 0.7); transform: translateY(-2px); }
-        .web3-btn:disabled { background: #30363d; cursor: not-allowed; box-shadow: none; }
+        .web3-btn:disabled { background: #30363d; cursor: not-allowed; box-shadow: none; transform: none; }
         .web3-input { background-color: #010409; border: 1px solid #30363d; color: #E6EDF3; }
         .tab-btn { border-bottom: 2px solid transparent; transition: all 0.3s ease; }
         .tab-btn.active { color: #58A6FF; border-bottom-color: #58A6FF; }
@@ -67,143 +57,210 @@
     <div id="background-animation"></div>
     <div class="auth-card rounded-xl shadow-lg p-6 md:p-8">
         <h1 class="text-4xl font-bold text-glow text-center mb-2">DETECTUS</h1>
-        <p class="text-center text-gray-400 mb-6">Đăng nhập để truy cập Bảng điều khiển</p>
-        <div class="flex border-b border-gray-700 mb-6">
+        <p id="card-subtitle" class="text-center text-gray-400 mb-6">Đăng nhập để truy cập Bảng điều khiển</p>
+        
+        <div id="tabs-container" class="flex border-b border-gray-700 mb-6">
             <button id="login-tab-btn" class="tab-btn flex-1 py-2 font-bold active">Đăng Nhập</button>
             <button id="register-tab-btn" class="tab-btn flex-1 py-2 font-bold">Đăng Ký</button>
         </div>
+        
         <div id="message-container" class="mb-4 hidden"></div>
+        
+        <!-- Form Đăng nhập / Đăng ký -->
         <form id="auth-form" class="space-y-6">
             <div class="relative">
-                <label for="auth-wallet-address" class="font-semibold text-gray-300">Tên tài khoản (Ví):</label>
-                <input type="text" id="auth-wallet-address" class="web3-input w-full mt-1 p-3 rounded-lg" placeholder="Nhập tên tài khoản hoặc địa chỉ ví" required>
+                <label for="auth-email" class="font-semibold text-gray-300">Email:</label>
+                <input type="email" id="auth-email" class="web3-input w-full mt-1 p-3 rounded-lg" placeholder="Nhập địa chỉ email của bạn" required>
             </div>
             <div class="relative">
                 <label for="auth-password" class="font-semibold text-gray-300">Mật khẩu:</label>
                 <input type="password" id="auth-password" class="web3-input w-full mt-1 p-3 rounded-lg" placeholder="Nhập mật khẩu" required>
             </div>
-            <button type="submit" id="submit-btn" class="w-full web3-btn text-white font-bold py-3 px-6 rounded-lg text-lg">
+            <button type="submit" id="submit-btn" class="w-full web3-btn text-white font-bold py-3 px-6 rounded-lg text-lg flex items-center justify-center">
                 <span id="btn-text">Đăng Nhập</span>
-                <span id="btn-loader" class="hidden animate-spin">◌</span>
+                <div id="btn-loader" class="hidden animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
             </button>
         </form>
+
+        <!-- Form nhập OTP (ẩn ban đầu) -->
+        <form id="otp-form" class="space-y-6 hidden">
+             <p class="text-center text-gray-300">Một mã gồm 6 chữ số đã được gửi đến email của bạn. Vui lòng nhập vào bên dưới.</p>
+            <div class="relative">
+                <label for="otp-input" class="font-semibold text-gray-300">Mã OTP:</label>
+                <input type="text" id="otp-input" class="web3-input w-full mt-1 p-3 rounded-lg text-center text-2xl tracking-[1em]" placeholder="------" maxlength="6" required>
+            </div>
+            <button type="submit" id="otp-submit-btn" class="w-full web3-btn text-white font-bold py-3 px-6 rounded-lg text-lg flex items-center justify-center">
+                <span>Xác Thực</span>
+                <div class="hidden animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+            </button>
+             <button type="button" id="back-to-login-btn" class="w-full text-gray-400 hover:text-white text-center mt-2">Quay lại</button>
+        </form>
     </div>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            // --- CONFIG ---
-            const API_BASE_URL = 'http://localhost:3001'; // URL của server backend
 
-            // --- ELEMENTS ---
-            const loginTabBtn = document.getElementById('login-tab-btn');
-            const registerTabBtn = document.getElementById('register-tab-btn');
-            const authForm = document.getElementById('auth-form');
-            const submitBtn = document.getElementById('submit-btn');
-            const btnText = document.getElementById('btn-text');
-            const btnLoader = document.getElementById('btn-loader');
-            const walletInput = document.getElementById('auth-wallet-address');
-            const passwordInput = document.getElementById('auth-password');
-            const messageContainer = document.getElementById('message-container');
-            
-            // --- STATE ---
-            let isLoginMode = true;
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- CONFIG ---
+    const API_BASE_URL = 'https://detectus.onrender.com'; // Trỏ đến server đã deploy
 
-            // --- FUNCTIONS ---
-            function setMode(isLogin) {
-                isLoginMode = isLogin;
-                messageContainer.classList.add('hidden');
-                authForm.reset();
-                loginTabBtn.classList.toggle('active', isLogin);
-                registerTabBtn.classList.toggle('active', !isLogin);
-                btnText.textContent = isLogin ? 'Đăng Nhập' : 'Đăng Ký';
-            }
+    // --- ELEMENTS ---
+    const loginTabBtn = document.getElementById('login-tab-btn');
+    const registerTabBtn = document.getElementById('register-tab-btn');
+    const authForm = document.getElementById('auth-form');
+    const otpForm = document.getElementById('otp-form');
+    const emailInput = document.getElementById('auth-email');
+    const passwordInput = document.getElementById('auth-password');
+    const otpInput = document.getElementById('otp-input');
+    const messageContainer = document.getElementById('message-container');
+    const backToLoginBtn = document.getElementById('back-to-login-btn');
+    const cardSubtitle = document.getElementById('card-subtitle');
+    const tabsContainer = document.getElementById('tabs-container');
+    
+    // --- STATE ---
+    let isLoginMode = true;
+    let emailForOtpVerification = ''; // Lưu email đã đăng ký để gửi đi xác thực
 
-            function showMessage(message, isError = true) {
-                messageContainer.textContent = message;
-                messageContainer.className = `message-box ${isError ? 'error-msg' : 'success-msg'}`;
-                messageContainer.classList.remove('hidden');
-            }
+    // --- FUNCTIONS ---
+    function showView(view) { // 'auth' hoặc 'otp'
+        messageContainer.classList.add('hidden'); // Ẩn thông báo khi chuyển view
+        if (view === 'otp') {
+            authForm.classList.add('hidden');
+            tabsContainer.classList.add('hidden');
+            otpForm.classList.remove('hidden');
+            cardSubtitle.textContent = "Xác Thực Tài Khoản Của Bạn";
+        } else { // 'auth'
+            authForm.classList.remove('hidden');
+            tabsContainer.classList.remove('hidden');
+            otpForm.classList.add('hidden');
+            cardSubtitle.textContent = "Đăng nhập để truy cập Bảng điều khiển";
+            setMode(true);
+        }
+    }
 
-            function setLoading(isLoading) {
-                if (isLoading) {
-                    submitBtn.disabled = true;
-                    btnText.classList.add('hidden');
-                    btnLoader.classList.remove('hidden');
-                } else {
-                    submitBtn.disabled = false;
-                    btnText.classList.remove('hidden');
-                    btnLoader.classList.add('hidden');
-                }
-            }
-            
-            // --- EVENT LISTENERS ---
-            loginTabBtn.addEventListener('click', () => setMode(true));
-            registerTabBtn.addEventListener('click', () => setMode(false));
+    function setMode(isLogin) {
+        isLoginMode = isLogin;
+        messageContainer.classList.add('hidden');
+        authForm.reset();
+        loginTabBtn.classList.toggle('active', isLogin);
+        registerTabBtn.classList.toggle('active', !isLogin);
+        const btnText = authForm.querySelector('span');
+        btnText.textContent = isLogin ? 'Đăng Nhập' : 'Đăng Ký';
+    }
 
-            authForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const username = walletInput.value.trim();
-                const password = passwordInput.value;
+    function showMessage(message, isError = true) {
+        messageContainer.textContent = message;
+        messageContainer.className = `message-box ${isError ? 'error-msg' : 'success-msg'}`;
+        messageContainer.classList.remove('hidden');
+    }
 
-                if (!username || !password) {
-                    showMessage("Vui lòng nhập đầy đủ thông tin.");
-                    return;
-                }
-                
-                setLoading(true);
-                messageContainer.classList.add('hidden');
+    function setLoading(formElement, isLoading) {
+        const button = formElement.querySelector('button[type="submit"]');
+        if (!button) return;
+        const textSpan = button.querySelector('span');
+        const loaderDiv = button.querySelector('div');
 
-                const endpoint = isLoginMode ? '/login' : '/register';
-                const url = `${API_BASE_URL}${endpoint}`;
+        button.disabled = isLoading;
+        if (textSpan) textSpan.style.display = isLoading ? 'none' : 'inline';
+        if (loaderDiv) loaderDiv.classList.toggle('hidden', !isLoading);
+    }
+    
+    // --- EVENT LISTENERS ---
+    loginTabBtn.addEventListener('click', () => setMode(true));
+    registerTabBtn.addEventListener('click', () => setMode(false));
+    backToLoginBtn.addEventListener('click', () => showView('auth'));
 
-                try {
-                    const response = await fetch(url, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ username, password }),
-                    });
+    // Xử lý form Đăng nhập / Đăng ký
+    authForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = emailInput.value.trim(); // Đây là email
+        const password = passwordInput.value;
 
-                    const data = await response.json();
+        if (!username || !password) {
+            showMessage("Vui lòng nhập đầy đủ thông tin.");
+            return;
+        }
+        
+        setLoading(authForm, true);
+        messageContainer.classList.add('hidden');
 
-                    if (!response.ok) {
-                        // Ném lỗi để block `catch` xử lý
-                        throw new Error(data.message || 'Đã có lỗi xảy ra.');
-                    }
-                    
-                    // Xử lý khi request thành công
-                    if (isLoginMode) {
-                        showMessage("Đăng nhập thành công! Đang chuyển hướng...", false);
-                        localStorage.setItem('loggedInUser', data.user.username);
-                        setTimeout(() => { window.location.href = 'app.html'; }, 1500);
-                    } else {
-                        showMessage("Đăng ký thành công! Vui lòng chuyển qua tab Đăng nhập.", false);
-                        setMode(true); // Tự động chuyển sang tab đăng nhập
-                    }
+        const endpoint = isLoginMode ? '/login' : '/register';
+        const url = `${API_BASE_URL}${endpoint}`;
 
-                } catch (error) {
-                    showMessage(error.message);
-                } finally {
-                    setLoading(false);
-                }
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password }),
             });
 
-            // --- BACKGROUND ANIMATION ---
-            const background = document.getElementById('background-animation');
-            const starCount = 150;
-            for (let i = 0; i < starCount; i++) {
-                const star = document.createElement('div');
-                star.className = 'star';
-                const size = Math.random() * 2 + 1;
-                star.style.width = `${size}px`;
-                star.style.height = `${size}px`;
-                star.style.top = `${Math.random() * 100}%`;
-                star.style.left = `${Math.random() * 100}%`;
-                star.style.animationDelay = `${Math.random() * 10}s`;
-                star.style.animationDuration = `${Math.random() * 5 + 5}s`;
-                background.appendChild(star);
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || 'Đã có lỗi xảy ra.');
+            
+            if (isLoginMode) {
+                showMessage("Đăng nhập thành công! Đang chuyển hướng...", false);
+                localStorage.setItem('loggedInUser', data.user.username);
+                setTimeout(() => { window.location.href = 'app.html'; }, 1500);
+            } else { // Chế độ đăng ký
+                showMessage(data.message, false);
+                emailForOtpVerification = username; // Lưu lại email để xác thực
+                showView('otp'); // Chuyển sang màn hình nhập OTP
             }
-        });
-    </script>
+        } catch (error) {
+            showMessage(error.message);
+        } finally {
+            setLoading(authForm, false);
+        }
+    });
+
+    // Xử lý form xác thực OTP
+    otpForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const otp = otpInput.value.trim();
+        if (!otp || otp.length !== 6) {
+            showMessage("Vui lòng nhập mã OTP gồm 6 chữ số.");
+            return;
+        }
+
+        setLoading(otpForm, true);
+        messageContainer.classList.add('hidden');
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/verify-otp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: emailForOtpVerification, otp }),
+            });
+
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message);
+
+            showMessage(data.message, false);
+            setTimeout(() => {
+                showView('auth'); // Quay lại màn hình đăng nhập sau khi thành công
+            }, 2000);
+
+        } catch(error) {
+            showMessage(error.message);
+        } finally {
+            setLoading(otpForm, false);
+        }
+    });
+
+    // --- BACKGROUND ANIMATION ---
+    const background = document.getElementById('background-animation');
+    const starCount = 150;
+    for (let i = 0; i < starCount; i++) {
+        const star = document.createElement('div');
+        star.className = 'star';
+        const size = Math.random() * 2 + 1;
+        star.style.width = `${size}px`;
+        star.style.height = `${size}px`;
+        star.style.top = `${Math.random() * 100}%`;
+        star.style.left = `${Math.random() * 100}%`;
+        star.style.animationDelay = `${Math.random() * 10}s`;
+        star.style.animationDuration = `${Math.random() * 5 + 5}s`;
+        background.appendChild(star);
+    }
+});
+</script>
 </body>
 </html>
