@@ -145,7 +145,6 @@ app.post('/login', async (req, res) => {
             return res.status(400).json({ message: "Sai email hoặc mật khẩu." });
         }
         
-        // KIỂM TRA MỚI: Yêu cầu tài khoản phải được xác thực
         if (!user.isVerified) {
             return res.status(403).json({ message: "Tài khoản chưa được kích hoạt. Vui lòng kiểm tra email để xác thực." });
         }
@@ -167,7 +166,7 @@ app.post('/login', async (req, res) => {
     }
 });
 
-// 4. API lấy toàn bộ thông tin của một người dùng (Không thay đổi)
+// 4. API lấy toàn bộ thông tin của một người dùng
 app.get('/user/:username', async (req, res) => {
     try {
         const username = req.params.username.toLowerCase();
@@ -182,18 +181,39 @@ app.get('/user/:username', async (req, res) => {
     }
 });
 
-// 5. API để cập nhật thông tin người dùng (Không thay đổi)
+// 5. API để cập nhật thông tin người dùng (ĐÃ CẢI THIỆN)
 app.post('/update-user', async (req, res) => {
     try {
         const { username, risk, suspiciousCount, newTransaction } = req.body;
+
+        // Xây dựng đối tượng cập nhật một cách linh hoạt
+        const updateData = {};
+        const setData = {};
+
+        if (risk !== undefined) {
+            setData.risk = risk;
+        }
+        if (suspiciousCount !== undefined) {
+            setData.suspiciousCount = suspiciousCount;
+        }
+        if (Object.keys(setData).length > 0) {
+            updateData.$set = setData;
+        }
+        if (newTransaction) {
+            updateData.$push = { history: newTransaction };
+        }
+
+        // Kiểm tra xem có dữ liệu gì để cập nhật không
+        if (Object.keys(updateData).length === 0) {
+            return res.status(400).json({ message: "Không có dữ liệu để cập nhật." });
+        }
+
         const updatedUser = await UserModel.findOneAndUpdate(
             { username: username.toLowerCase() },
-            {
-                $set: { risk: risk, suspiciousCount: suspiciousCount },
-                $push: { history: newTransaction }
-            },
-            { new: true }
+            updateData,
+            { new: true } // Trả về document đã được cập nhật
         ).select('-password');
+
         if (!updatedUser) {
             return res.status(404).json({ message: "Không tìm thấy người dùng để cập nhật." });
         }
