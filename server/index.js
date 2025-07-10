@@ -54,6 +54,11 @@ const UserModel = mongoose.model("User", UserSchema);
 
 
 // --- API Endpoints (Routes) ---
+app.get('/bot', async (req, res) => {
+    return res.status(200).json({message: "ok"})
+})
+
+
 
 // 1. API Đăng ký người dùng mới (Gửi OTP)
 app.post('/register', async (req, res) => {
