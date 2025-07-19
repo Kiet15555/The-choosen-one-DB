@@ -45,12 +45,11 @@ const UserSchema = new mongoose.Schema({
     wallets: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Wallet' }]
 });
 
-// --- SỬA ĐỔI: Thêm trường unblacklistCount vào WalletSchema ---
 const WalletSchema = new mongoose.Schema({
     address: { type: String, required: true, unique: true },
     trustScore: { type: Number, default: 500 },
     riskLevel: { type: String, default: 'An Toàn' },
-    unblacklistCount: { type: Number, default: 0 }, // <-- THÊM MỚI: Đếm số lần kháng cáo
+    unblacklistCount: { type: Number, default: 0 },
     frozen: { type: Boolean, default: false },
     history: { type: Array, default: [] },
     owner_username: { type: String, required: true, lowercase: true }
@@ -63,7 +62,8 @@ const WalletModel = mongoose.model("Wallet", WalletSchema);
 // --- API Endpoints ---
 app.get('/bot', (req, res) => res.status(200).json({message: "ok"}));
 
-// API Đăng ký
+// ... (Các API đăng ký, đăng nhập, OTP giữ nguyên)
+
 app.post('/register', async (req, res) => {
     try {
         const { username: email, password } = req.body;
@@ -105,7 +105,6 @@ app.post('/register', async (req, res) => {
     }
 });
 
-// API Xác thực OTP
 app.post('/verify-otp', async (req, res) => {
     try {
         const { email, otp } = req.body;
@@ -127,7 +126,6 @@ app.post('/verify-otp', async (req, res) => {
     }
 });
 
-// API Đăng nhập
 app.post('/login', async (req, res) => {
     try {
         const { username: email, password } = req.body;
@@ -143,7 +141,6 @@ app.post('/login', async (req, res) => {
     }
 });
 
-// API lấy thông tin người dùng
 app.get('/user/:username', async (req, res) => {
     try {
         const user = await UserModel.findOne({ username: req.params.username.toLowerCase() }).populate('wallets').select('-password');
@@ -155,7 +152,6 @@ app.get('/user/:username', async (req, res) => {
     }
 });
 
-// API kết nối ví
 app.post('/wallet/connect', async (req, res) => {
     try {
         const { username, walletAddress } = req.body;
@@ -180,7 +176,6 @@ app.post('/wallet/connect', async (req, res) => {
     }
 });
 
-// API cập nhật giao dịch
 app.post('/wallet/update-transaction', async (req, res) => {
     try {
         const { walletAddress, newTransaction, newTrustScore, newRiskLevel } = req.body;
@@ -203,35 +198,64 @@ app.post('/wallet/update-transaction', async (req, res) => {
     }
 });
 
-// --- THÊM MỚI: API để xử lý việc kháng cáo blacklist ---
 app.post('/wallet/unblacklist', async (req, res) => {
     try {
         const { walletAddress } = req.body;
         if (!walletAddress) {
             return res.status(400).json({ message: 'Thiếu địa chỉ ví.' });
         }
-
         const updatedWallet = await WalletModel.findOneAndUpdate(
             { address: walletAddress },
             {
                 $set: {
-                    trustScore: 500, // Reset điểm về 500
-                    riskLevel: 'An Toàn' // Reset cấp độ về 'An Toàn'
+                    trustScore: 500,
+                    riskLevel: 'An Toàn'
                 },
-                $inc: { unblacklistCount: 1 } // Tăng bộ đếm kháng cáo lên 1
+                $inc: { unblacklistCount: 1 }
             },
-            { new: true } // Trả về document đã được cập nhật
+            { new: true }
         );
-
-        if (!updatedWallet) {
-            return res.status(404).json({ message: 'Không tìm thấy ví.' });
-        }
-
+        if (!updatedWallet) return res.status(404).json({ message: 'Không tìm thấy ví.' });
         res.status(200).json({ message: 'Kháng cáo thành công! Điểm đã được khôi phục về 500.', wallet: updatedWallet });
-
     } catch (error) {
         console.error("Unblacklist Error:", error);
         res.status(500).json({ message: 'Lỗi server khi thực hiện kháng cáo.' });
+    }
+});
+
+// --- THÊM MỚI: API để Admin cập nhật dữ liệu ví trong DB ---
+app.post('/admin/update-wallet', async (req, res) => {
+    try {
+        const { walletAddress, trustScore, riskLevel, frozen } = req.body;
+        if (!walletAddress) {
+            return res.status(400).json({ message: "Thiếu địa chỉ ví." });
+        }
+
+        const updateData = {};
+        if (trustScore !== undefined) updateData.trustScore = trustScore;
+        if (riskLevel !== undefined) updateData.riskLevel = riskLevel;
+        if (frozen !== undefined) updateData.frozen = frozen;
+
+        if (Object.keys(updateData).length === 0) {
+            return res.status(400).json({ message: "Không có dữ liệu để cập nhật." });
+        }
+
+        const updatedWallet = await WalletModel.findOneAndUpdate(
+            { address: walletAddress },
+            { $set: updateData },
+            { new: true }
+        );
+
+        if (!updatedWallet) {
+            // Nếu ví chưa có trong DB, có thể bỏ qua hoặc tạo mới nếu cần
+            return res.status(404).json({ message: "Không tìm thấy ví trong DB để cập nhật." });
+        }
+
+        res.status(200).json({ message: "Admin cập nhật DB thành công!", wallet: updatedWallet });
+
+    } catch (error) {
+        console.error("Admin Update Wallet Error:", error);
+        res.status(500).json({ message: "Lỗi server khi admin cập nhật ví." });
     }
 });
 
