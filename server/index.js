@@ -45,11 +45,12 @@ const UserSchema = new mongoose.Schema({
     wallets: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Wallet' }]
 });
 
-// --- SỬA ĐỔI: Thêm trường riskLevel vào WalletSchema ---
+// --- SỬA ĐỔI: Thêm trường unblacklistCount vào WalletSchema ---
 const WalletSchema = new mongoose.Schema({
     address: { type: String, required: true, unique: true },
     trustScore: { type: Number, default: 500 },
-    riskLevel: { type: String, default: 'An Toàn' }, // <-- THÊM MỚI: Lưu cấp độ rủi ro dạng text
+    riskLevel: { type: String, default: 'An Toàn' },
+    unblacklistCount: { type: Number, default: 0 }, // <-- THÊM MỚI: Đếm số lần kháng cáo
     frozen: { type: Boolean, default: false },
     history: { type: Array, default: [] },
     owner_username: { type: String, required: true, lowercase: true }
@@ -166,7 +167,6 @@ app.post('/wallet/connect', async (req, res) => {
             wallet = await WalletModel.create({
                 address: walletAddress,
                 owner_username: user.username
-                // riskLevel sẽ có giá trị default là 'An Toàn'
             });
         }
         if (!user.wallets.includes(wallet._id)) {
@@ -180,32 +180,61 @@ app.post('/wallet/connect', async (req, res) => {
     }
 });
 
-// --- SỬA ĐỔI: API cập nhật giao dịch, nhận thêm newRiskLevel ---
+// API cập nhật giao dịch
 app.post('/wallet/update-transaction', async (req, res) => {
     try {
-        const { walletAddress, newTransaction, newTrustScore, newRiskLevel } = req.body; // Nhận thêm newRiskLevel
-
+        const { walletAddress, newTransaction, newTrustScore, newRiskLevel } = req.body;
         const updatedWallet = await WalletModel.findOneAndUpdate(
             { address: walletAddress },
             {
                 $push: { history: newTransaction },
                 $set: { 
                     trustScore: newTrustScore,
-                    riskLevel: newRiskLevel // <-- Cập nhật riskLevel
+                    riskLevel: newRiskLevel
                 }
             },
-            { new: true } // Trả về document đã được cập nhật
+            { new: true }
         );
-
-        if (!updatedWallet) {
-            return res.status(404).json({ message: "Không tìm thấy ví để cập nhật." });
-        }
+        if (!updatedWallet) return res.status(404).json({ message: "Không tìm thấy ví để cập nhật." });
         res.status(200).json({ message: "Cập nhật giao dịch và điểm cho ví thành công!", wallet: updatedWallet });
     } catch (error) {
         console.error("Update Transaction Error:", error);
         res.status(500).json({ message: "Lỗi server khi cập nhật giao dịch." });
     }
 });
+
+// --- THÊM MỚI: API để xử lý việc kháng cáo blacklist ---
+app.post('/wallet/unblacklist', async (req, res) => {
+    try {
+        const { walletAddress } = req.body;
+        if (!walletAddress) {
+            return res.status(400).json({ message: 'Thiếu địa chỉ ví.' });
+        }
+
+        const updatedWallet = await WalletModel.findOneAndUpdate(
+            { address: walletAddress },
+            {
+                $set: {
+                    trustScore: 500, // Reset điểm về 500
+                    riskLevel: 'An Toàn' // Reset cấp độ về 'An Toàn'
+                },
+                $inc: { unblacklistCount: 1 } // Tăng bộ đếm kháng cáo lên 1
+            },
+            { new: true } // Trả về document đã được cập nhật
+        );
+
+        if (!updatedWallet) {
+            return res.status(404).json({ message: 'Không tìm thấy ví.' });
+        }
+
+        res.status(200).json({ message: 'Kháng cáo thành công! Điểm đã được khôi phục về 500.', wallet: updatedWallet });
+
+    } catch (error) {
+        console.error("Unblacklist Error:", error);
+        res.status(500).json({ message: 'Lỗi server khi thực hiện kháng cáo.' });
+    }
+});
+
 
 // Khởi động Server
 app.listen(PORT, () => {
