@@ -36,29 +36,43 @@ const transporter = nodemailer.createTransport({
     },
 });
 
-// --- Định nghĩa Schema (Cấu trúc dữ liệu cho User) ---
+// --- Định nghĩa Schemas (Cấu trúc dữ liệu) ---
+
+// --- SỬA ĐỔI: Chỉnh sửa UserSchema để liên kết với Wallet ---
 const UserSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true, lowercase: true }, // Sẽ lưu email ở đây
     password: { type: String, required: true },
     isVerified: { type: Boolean, default: false }, // Trạng thái xác thực
     otp: { type: String }, // Lưu mã OTP đã được mã hóa
     otpExpires: { type: Date }, // Thời gian hết hạn của OTP
+    // Các trường risk, frozen, suspiciousCount, history có thể được di chuyển sang WalletSchema nếu muốn
+    // Ở đây ta giữ lại để tương thích, nhưng thêm trường wallets để liên kết
     risk: { type: String, default: 'Safe' },
     frozen: { type: Boolean, default: false },
     suspiciousCount: { type: Number, default: 0 },
-    history: { type: Array, default: [] }
+    history: { type: Array, default: [] },
+    wallets: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Wallet' }] // Mảng chứa ID của các ví thuộc về user
 });
 
-// Tạo Model từ Schema
+// --- THÊM MỚI: Định nghĩa Schema cho Wallet Collection ---
+const WalletSchema = new mongoose.Schema({
+    address: { type: String, required: true, unique: true }, // Địa chỉ ví
+    trustScore: { type: Number, default: 500 }, // Điểm tin cậy
+    frozen: { type: Boolean, default: false }, // Trạng thái đóng băng
+    history: { type: Array, default: [] }, // Lịch sử giao dịch của riêng ví này
+    owner_username: { type: String, required: true, lowercase: true } // Email của người dùng sở hữu để tham chiếu
+});
+
+
+// --- Tạo Models từ Schemas ---
 const UserModel = mongoose.model("User", UserSchema);
+const WalletModel = mongoose.model("Wallet", WalletSchema); // --- THÊM MỚI ---
 
 
 // --- API Endpoints (Routes) ---
 app.get('/bot', async (req, res) => {
     return res.status(200).json({message: "ok"})
 })
-
-
 
 // 1. API Đăng ký người dùng mới (Gửi OTP)
 app.post('/register', async (req, res) => {
@@ -79,7 +93,6 @@ app.post('/register', async (req, res) => {
         const hashedOtp = await bcrypt.hash(otp, salt);
         const otpExpires = Date.now() + 10 * 60 * 1000; // OTP hết hạn sau 10 phút
 
-        // Nếu user đã tồn tại nhưng chưa xác thực, cập nhật lại OTP
         if (existingUser) {
             existingUser.password = hashedPassword;
             existingUser.otp = hashedOtp;
@@ -95,7 +108,6 @@ app.post('/register', async (req, res) => {
             await newUser.save();
         }
         
-        // Gửi email chứa mã OTP
         await transporter.sendMail({
              from: '"Detectus App" <noreply@detectus.xyz>',
             to: email,
@@ -175,7 +187,8 @@ app.post('/login', async (req, res) => {
 app.get('/user/:username', async (req, res) => {
     try {
         const username = req.params.username.toLowerCase();
-        const user = await UserModel.findOne({ username: username }).select('-password');
+        // --- SỬA ĐỔI: Lấy thông tin cả các ví liên kết ---
+        const user = await UserModel.findOne({ username: username }).populate('wallets').select('-password');
         if (!user) {
             return res.status(404).json({ message: "Không tìm thấy người dùng." });
         }
@@ -186,47 +199,73 @@ app.get('/user/:username', async (req, res) => {
     }
 });
 
-// 5. API để cập nhật thông tin người dùng (ĐÃ CẢI THIỆN)
-app.post('/update-user', async (req, res) => {
+// --- THÊM MỚI: API để kết nối ví và lưu vào DB ---
+app.post('/wallet/connect', async (req, res) => {
     try {
-        const { username, risk, suspiciousCount, newTransaction } = req.body;
-
-        // Xây dựng đối tượng cập nhật một cách linh hoạt
-        const updateData = {};
-        const setData = {};
-
-        if (risk !== undefined) {
-            setData.risk = risk;
-        }
-        if (suspiciousCount !== undefined) {
-            setData.suspiciousCount = suspiciousCount;
-        }
-        if (Object.keys(setData).length > 0) {
-            updateData.$set = setData;
-        }
-        if (newTransaction) {
-            updateData.$push = { history: newTransaction };
+        const { username, walletAddress } = req.body;
+        if (!username || !walletAddress) {
+            return res.status(400).json({ message: "Thiếu username hoặc walletAddress." });
         }
 
-        // Kiểm tra xem có dữ liệu gì để cập nhật không
-        if (Object.keys(updateData).length === 0) {
-            return res.status(400).json({ message: "Không có dữ liệu để cập nhật." });
+        const user = await UserModel.findOne({ username: username.toLowerCase() });
+        if (!user) {
+            return res.status(404).json({ message: "Không tìm thấy người dùng." });
         }
 
-        const updatedUser = await UserModel.findOneAndUpdate(
-            { username: username.toLowerCase() },
-            updateData,
-            { new: true } // Trả về document đã được cập nhật
-        ).select('-password');
-
-        if (!updatedUser) {
-            return res.status(404).json({ message: "Không tìm thấy người dùng để cập nhật." });
+        // 1. Tìm hoặc Tạo ví mới trong collection "wallets"
+        let wallet = await WalletModel.findOne({ address: walletAddress });
+        if (!wallet) {
+            wallet = new WalletModel({
+                address: walletAddress,
+                trustScore: 500, // Điểm khởi tạo
+                owner_username: user.username
+            });
+            await wallet.save();
         }
-        res.status(200).json({ message: "Cập nhật thành công!", user: updatedUser });
+
+        // 2. Liên kết ví với người dùng (nếu chưa được liên kết)
+        if (!user.wallets.includes(wallet._id)) {
+            user.wallets.push(wallet._id);
+            await user.save();
+        }
+
+        res.status(200).json({ message: "Kết nối và liên kết ví thành công!", wallet });
+
     } catch (error) {
-        console.error("Update User Error:", error);
-        res.status(500).json({ message: "Đã có lỗi xảy ra ở server." });
+        console.error("Connect Wallet DB Error:", error);
+        res.status(500).json({ message: "Lỗi server khi kết nối ví." });
     }
+});
+
+// --- THÊM MỚI: API để cập nhật giao dịch cho một ví cụ thể ---
+app.post('/wallet/update-transaction', async (req, res) => {
+    try {
+        const { walletAddress, newTransaction, newTrustScore } = req.body;
+
+        const updatedWallet = await WalletModel.findOneAndUpdate(
+            { address: walletAddress },
+            {
+                $push: { history: newTransaction }, // Thêm giao dịch mới vào mảng history
+                $set: { trustScore: newTrustScore }  // Cập nhật điểm tin cậy mới
+            },
+            { new: true } // Trả về document đã được cập nhật
+        );
+
+        if (!updatedWallet) {
+            return res.status(404).json({ message: "Không tìm thấy ví để cập nhật." });
+        }
+        res.status(200).json({ message: "Cập nhật giao dịch và điểm cho ví thành công!", wallet: updatedWallet });
+    } catch (error) {
+        console.error("Update Transaction Error:", error);
+        res.status(500).json({ message: "Lỗi server khi cập nhật giao dịch." });
+    }
+});
+
+
+// API cũ để cập nhật user, có thể không cần dùng nữa hoặc chỉ dùng cho các mục đích khác
+app.post('/update-user', async (req, res) => {
+    // Logic cũ, có thể bạn muốn giữ lại để cập nhật các thông tin khác của user
+    res.status(400).json({ message: "Endpoint này không còn được sử dụng để cập nhật giao dịch. Vui lòng dùng /wallet/update-transaction."})
 });
 
 // --- Khởi động Server ---
