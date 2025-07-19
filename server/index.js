@@ -45,12 +45,14 @@ const UserSchema = new mongoose.Schema({
     wallets: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Wallet' }]
 });
 
+// Sửa đổi: Thêm trường whitelist
 const WalletSchema = new mongoose.Schema({
     address: { type: String, required: true, unique: true },
     trustScore: { type: Number, default: 500 },
     riskLevel: { type: String, default: 'An Toàn' },
     unblacklistCount: { type: Number, default: 0 },
     frozen: { type: Boolean, default: false },
+    whitelist: { type: Boolean, default: false }, // <-- THÊM MỚI
     history: { type: Array, default: [] },
     owner_username: { type: String, required: true, lowercase: true }
 });
@@ -63,7 +65,6 @@ const WalletModel = mongoose.model("Wallet", WalletSchema);
 app.get('/bot', (req, res) => res.status(200).json({message: "ok"}));
 
 // ... (Các API đăng ký, đăng nhập, OTP giữ nguyên)
-
 app.post('/register', async (req, res) => {
     try {
         const { username: email, password } = req.body;
@@ -223,10 +224,10 @@ app.post('/wallet/unblacklist', async (req, res) => {
     }
 });
 
-// --- THÊM MỚI: API để Admin cập nhật dữ liệu ví trong DB ---
+// Sửa đổi: API của Admin giờ sẽ nhận cả 'whitelist'
 app.post('/admin/update-wallet', async (req, res) => {
     try {
-        const { walletAddress, trustScore, riskLevel, frozen } = req.body;
+        const { walletAddress, trustScore, riskLevel, frozen, whitelist } = req.body;
         if (!walletAddress) {
             return res.status(400).json({ message: "Thiếu địa chỉ ví." });
         }
@@ -235,6 +236,7 @@ app.post('/admin/update-wallet', async (req, res) => {
         if (trustScore !== undefined) updateData.trustScore = trustScore;
         if (riskLevel !== undefined) updateData.riskLevel = riskLevel;
         if (frozen !== undefined) updateData.frozen = frozen;
+        if (whitelist !== undefined) updateData.whitelist = whitelist; // <-- THÊM MỚI
 
         if (Object.keys(updateData).length === 0) {
             return res.status(400).json({ message: "Không có dữ liệu để cập nhật." });
@@ -247,7 +249,6 @@ app.post('/admin/update-wallet', async (req, res) => {
         );
 
         if (!updatedWallet) {
-            // Nếu ví chưa có trong DB, có thể bỏ qua hoặc tạo mới nếu cần
             return res.status(404).json({ message: "Không tìm thấy ví trong DB để cập nhật." });
         }
 
