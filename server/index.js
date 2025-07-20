@@ -247,7 +247,6 @@ app.post('/admin/update-wallet', async (req, res) => {
     }
 });
 
-// --- SỬA ĐỔI: API Phân tích AI được nâng cấp ---
 app.post('/wallet/analyze', async (req, res) => {
     try {
         const { walletAddress } = req.body;
@@ -277,7 +276,7 @@ app.post('/wallet/analyze', async (req, res) => {
         }
         
         const txCount = history.length;
-        // Sửa lỗi tính toán số lớn
+        // --- SỬA LỖI: Chuyển đổi sang Number trước khi tính toán ---
         const totalSent = history.reduce((sum, tx) => sum + Number(tx.amount), 0);
         const uniqueRecipients = new Set(history.map(tx => tx.recipient)).size;
         const avgTxAmount = totalSent / txCount;
@@ -305,7 +304,6 @@ app.post('/wallet/analyze', async (req, res) => {
         }
 
         analysisText += `#### Đánh giá & Đề xuất\n`;
-        // Sửa đổi logic đánh giá
         if (unblacklistCount > 1 || trustScore < 100) {
              analysisText += `> **Kết luận:** Mức độ rủi ro **Rất Cao**. Ví này có tiền sử kháng cáo nhiều lần hoặc đang bị chặn. Giao dịch với ví này tiềm ẩn nguy cơ lớn.\n> **Đề xuất:** **KHÔNG** nên thực hiện giao dịch với ví này.`;
         } else if (trustScore < 300 || unblacklistCount > 0) {
