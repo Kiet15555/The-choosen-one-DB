@@ -256,12 +256,27 @@ app.post('/wallet/analyze', async (req, res) => {
         }
 
         const wallet = await WalletModel.findOne({ address: walletAddress });
-        if (!wallet || wallet.history.length === 0) {
-            return res.status(200).json({ analysis: "Không có đủ dữ liệu giao dịch để phân tích." });
+        if (!wallet) {
+             return res.status(200).json({ 
+                status: {
+                    riskLevel: "Chưa xác định",
+                    trustScore: "N/A",
+                    frozen: false,
+                    unblacklistCount: 0
+                },
+                analysis: "### Báo cáo Phân tích AI\n\n- **Thông tin:** Ví này chưa từng tương tác với hệ thống của chúng tôi và không có dữ liệu trong database để phân tích." 
+            });
         }
         
-        // --- Mô phỏng quá trình phân tích của AI ---
-        const { history, trustScore, unblacklistCount } = wallet;
+        const { history, trustScore, unblacklistCount, frozen, riskLevel } = wallet;
+
+        // Trả về trạng thái cơ bản trước
+        const status = { trustScore, riskLevel, frozen, unblacklistCount };
+
+        if (history.length === 0) {
+            return res.status(200).json({ status, analysis: "### Báo cáo Phân tích AI\n\n- **Thông tin:** Ví này đã có trong hệ thống nhưng chưa có giao dịch nào được ghi nhận để phân tích." });
+        }
+        
         const txCount = history.length;
         const totalSent = history.reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
         const uniqueRecipients = new Set(history.map(tx => tx.recipient)).size;
@@ -269,13 +284,13 @@ app.post('/wallet/analyze', async (req, res) => {
         const largestTx = Math.max(...history.map(tx => parseFloat(tx.amount)));
         const negativeTxs = history.filter(tx => tx.scoreImpact < 0);
 
-        let analysisText = `### Báo cáo Phân tích AI cho ví\n\n`;
+        let analysisText = `### Báo cáo Phân tích AI\n\n`;
         
         analysisText += `#### Tổng quan & Thói quen Tài chính\n`;
         analysisText += `- **Tổng giao dịch:** ${txCount} giao dịch\n`;
-        analysisText += `- **Tổng khối lượng:** ${totalSent.toFixed(4)} ETH\n`;
-        analysisText += `- **Giao dịch lớn nhất:** ${largestTx.toFixed(4)} ETH\n`;
-        analysisText += `- **Trung bình mỗi giao dịch:** ${avgTxAmount.toFixed(4)} ETH\n`;
+        analysisText += `- **Tổng khối lượng:** ${totalSent.toFixed(6)} ETH\n`;
+        analysisText += `- **Giao dịch lớn nhất:** ${largestTx.toFixed(6)} ETH\n`;
+        analysisText += `- **Trung bình mỗi giao dịch:** ${avgTxAmount.toFixed(6)} ETH\n`;
         analysisText += `- **Số đối tác nhận tiền:** ${uniqueRecipients} ví\n\n`;
 
         analysisText += `#### Phân tích Rủi ro\n`;
@@ -290,15 +305,17 @@ app.post('/wallet/analyze', async (req, res) => {
         }
 
         analysisText += `#### Đánh giá & Đề xuất\n`;
-        if (trustScore > 700) {
-            analysisText += `> **Kết luận:** Mức độ rủi ro **Thấp**. Đây là một ví hoạt động tích cực với điểm tin cậy cao. Các giao dịch có xu hướng an toàn. \n> **Đề xuất:** Tiếp tục duy trì thói quen giao dịch tốt.`;
-        } else if (trustScore < 300) {
-            analysisText += `> **Kết luận:** Mức độ rủi ro **Cao**. Ví này có điểm tin cậy thấp và có tiền sử hoạt động đáng ngờ. \n> **Đề xuất:** Hạn chế giao dịch với các địa chỉ ví mới hoặc không rõ nguồn gốc. Cân nhắc việc kháng cáo để khôi phục điểm nếu cần thiết.`;
+        if (unblacklistCount > 1 || trustScore < 100) {
+             analysisText += `> **Kết luận:** Mức độ rủi ro **Rất Cao**. Ví này có tiền sử kháng cáo nhiều lần hoặc đang bị chặn. Giao dịch với ví này tiềm ẩn nguy cơ lớn.\n> **Đề xuất:** **KHÔNG** nên thực hiện giao dịch với ví này.`;
+        } else if (trustScore < 300 || unblacklistCount > 0) {
+            analysisText += `> **Kết luận:** Mức độ rủi ro **Cao**. Ví này có điểm tin cậy thấp và có tiền sử hoạt động đáng ngờ. \n> **Đề xuất:** Hết sức thận trọng khi giao dịch. Chỉ thực hiện giao dịch với số tiền nhỏ nếu thực sự cần thiết.`;
+        } else if (trustScore < 500) {
+            analysisText += `> **Kết luận:** Mức độ rủi ro **Trung bình**. Ví có mức độ hoạt động ổn định nhưng có một vài giao dịch đáng ngờ. \n> **Đề xuất:** Để cải thiện điểm số, hãy ưu tiên giao dịch với các đối tác uy tín và tránh các giao dịch có giá trị quá lớn, bất thường.`;
         } else {
-            analysisText += `> **Kết luận:** Mức độ rủi ro **Trung bình**. Ví có mức độ hoạt động ổn định. \n> **Đề xuất:** Để cải thiện điểm số, hãy ưu tiên giao dịch với các đối tác uy tín và tránh các giao dịch có giá trị quá lớn, bất thường.`;
+            analysisText += `> **Kết luận:** Mức độ rủi ro **Thấp**. Đây là một ví hoạt động tích cực với điểm tin cậy cao. Các giao dịch có xu hướng an toàn. \n> **Đề xuất:** Tiếp tục duy trì thói quen giao dịch tốt.`;
         }
 
-        res.status(200).json({ analysis: analysisText });
+        res.status(200).json({ status, analysis: analysisText });
 
     } catch (error) {
         console.error("AI Analysis Error:", error);
