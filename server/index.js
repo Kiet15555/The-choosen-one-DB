@@ -150,10 +150,10 @@ app.post('/wallet/connect', async (req, res) => {
         if (!username || !walletAddress) return res.status(400).json({ message: "Thiếu username hoặc walletAddress." });
         const user = await UserModel.findOne({ username: username.toLowerCase() });
         if (!user) return res.status(404).json({ message: "Không tìm thấy người dùng." });
-        let wallet = await WalletModel.findOne({ address: walletAddress });
+        let wallet = await WalletModel.findOne({ address: walletAddress.toLowerCase() }); // Luôn tìm kiếm bằng lowercase
         if (!wallet) {
             wallet = await WalletModel.create({
-                address: walletAddress,
+                address: walletAddress.toLowerCase(), // Luôn lưu bằng lowercase
                 owner_username: user.username
             });
         }
@@ -171,7 +171,7 @@ app.post('/wallet/update-transaction', async (req, res) => {
     try {
         const { walletAddress, newTransaction, newTrustScore, newRiskLevel } = req.body;
         const updatedWallet = await WalletModel.findOneAndUpdate(
-            { address: walletAddress },
+            { address: walletAddress.toLowerCase() },
             {
                 $push: { history: newTransaction },
                 $set: { 
@@ -195,7 +195,7 @@ app.post('/wallet/unblacklist', async (req, res) => {
             return res.status(400).json({ message: 'Thiếu địa chỉ ví.' });
         }
         const updatedWallet = await WalletModel.findOneAndUpdate(
-            { address: walletAddress },
+            { address: walletAddress.toLowerCase() },
             {
                 $set: {
                     trustScore: 500,
@@ -230,7 +230,7 @@ app.post('/admin/update-wallet', async (req, res) => {
         }
 
         const updatedWallet = await WalletModel.findOneAndUpdate(
-            { address: walletAddress },
+            { address: walletAddress.toLowerCase() },
             { $set: updateData },
             { new: true }
         );
@@ -247,6 +247,7 @@ app.post('/admin/update-wallet', async (req, res) => {
     }
 });
 
+// --- SỬA LỖI: API Phân tích AI giờ sẽ tìm kiếm không phân biệt chữ hoa/thường ---
 app.post('/wallet/analyze', async (req, res) => {
     try {
         const { walletAddress } = req.body;
@@ -254,7 +255,9 @@ app.post('/wallet/analyze', async (req, res) => {
             return res.status(400).json({ message: "Thiếu địa chỉ ví." });
         }
 
-        const wallet = await WalletModel.findOne({ address: walletAddress });
+        // Chuyển địa chỉ nhận được về chữ thường trước khi tìm kiếm
+        const wallet = await WalletModel.findOne({ address: walletAddress.toLowerCase() });
+        
         if (!wallet) {
              return res.status(200).json({ 
                 status: {
@@ -275,13 +278,18 @@ app.post('/wallet/analyze', async (req, res) => {
             return res.status(200).json({ status, analysis: "### Báo cáo Phân tích AI\n\n- **Thông tin:** Ví này đã có trong hệ thống nhưng chưa có giao dịch nào được ghi nhận để phân tích." });
         }
         
-        const txCount = history.length;
-        // --- SỬA LỖI: Chuyển đổi sang Number trước khi tính toán ---
-        const totalSent = history.reduce((sum, tx) => sum + Number(tx.amount), 0);
-        const uniqueRecipients = new Set(history.map(tx => tx.recipient)).size;
+        const validHistory = history.filter(tx => tx && tx.amount !== undefined && tx.amount !== null && !isNaN(Number(tx.amount)) && Number(tx.amount) < 1e18);
+
+        if (validHistory.length === 0) {
+             return res.status(200).json({ status, analysis: "### Báo cáo Phân tích AI\n\n- **Thông tin:** Ví này không có dữ liệu giao dịch hợp lệ để phân tích." });
+        }
+
+        const txCount = validHistory.length;
+        const totalSent = validHistory.reduce((sum, tx) => sum + Number(tx.amount), 0);
+        const uniqueRecipients = new Set(validHistory.map(tx => tx.recipient)).size;
         const avgTxAmount = totalSent / txCount;
-        const largestTx = Math.max(...history.map(tx => Number(tx.amount)));
-        const negativeTxs = history.filter(tx => tx.scoreImpact < 0);
+        const largestTx = Math.max(...validHistory.map(tx => Number(tx.amount)));
+        const negativeTxs = validHistory.filter(tx => tx.scoreImpact < 0);
 
         let analysisText = `### Báo cáo Phân tích AI\n\n`;
         
