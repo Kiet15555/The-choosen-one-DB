@@ -38,21 +38,16 @@ const UserSchema = new mongoose.Schema({
     isVerified: { type: Boolean, default: false },
     otp: { type: String },
     otpExpires: { type: Date },
-    risk: { type: String, default: 'Safe' },
-    frozen: { type: Boolean, default: false },
-    suspiciousCount: { type: Number, default: 0 },
-    history: { type: Array, default: [] },
     wallets: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Wallet' }]
 });
 
-// Sửa đổi: Thêm trường whitelist
 const WalletSchema = new mongoose.Schema({
     address: { type: String, required: true, unique: true },
     trustScore: { type: Number, default: 500 },
     riskLevel: { type: String, default: 'An Toàn' },
     unblacklistCount: { type: Number, default: 0 },
     frozen: { type: Boolean, default: false },
-    whitelist: { type: Boolean, default: false }, // <-- THÊM MỚI
+    whitelist: { type: Boolean, default: false },
     history: { type: Array, default: [] },
     owner_username: { type: String, required: true, lowercase: true }
 });
@@ -62,9 +57,9 @@ const UserModel = mongoose.model("User", UserSchema);
 const WalletModel = mongoose.model("Wallet", WalletSchema);
 
 // --- API Endpoints ---
-app.get('/bot', (req, res) => res.status(200).json({message: "ok"}));
 
-// ... (Các API đăng ký, đăng nhập, OTP giữ nguyên)
+// ... (Các API cũ giữ nguyên)
+app.get('/bot', (req, res) => res.status(200).json({message: "ok"}));
 app.post('/register', async (req, res) => {
     try {
         const { username: email, password } = req.body;
@@ -105,7 +100,6 @@ app.post('/register', async (req, res) => {
         res.status(500).json({ message: "Lỗi server khi gửi email xác thực." });
     }
 });
-
 app.post('/verify-otp', async (req, res) => {
     try {
         const { email, otp } = req.body;
@@ -126,7 +120,6 @@ app.post('/verify-otp', async (req, res) => {
         res.status(500).json({ message: "Đã có lỗi xảy ra ở server." });
     }
 });
-
 app.post('/login', async (req, res) => {
     try {
         const { username: email, password } = req.body;
@@ -141,7 +134,6 @@ app.post('/login', async (req, res) => {
         res.status(500).json({ message: "Đã có lỗi xảy ra ở server." });
     }
 });
-
 app.get('/user/:username', async (req, res) => {
     try {
         const user = await UserModel.findOne({ username: req.params.username.toLowerCase() }).populate('wallets').select('-password');
@@ -152,7 +144,6 @@ app.get('/user/:username', async (req, res) => {
         res.status(500).json({ message: "Đã có lỗi xảy ra ở server." });
     }
 });
-
 app.post('/wallet/connect', async (req, res) => {
     try {
         const { username, walletAddress } = req.body;
@@ -176,7 +167,6 @@ app.post('/wallet/connect', async (req, res) => {
         res.status(500).json({ message: "Lỗi server khi kết nối ví." });
     }
 });
-
 app.post('/wallet/update-transaction', async (req, res) => {
     try {
         const { walletAddress, newTransaction, newTrustScore, newRiskLevel } = req.body;
@@ -198,7 +188,6 @@ app.post('/wallet/update-transaction', async (req, res) => {
         res.status(500).json({ message: "Lỗi server khi cập nhật giao dịch." });
     }
 });
-
 app.post('/wallet/unblacklist', async (req, res) => {
     try {
         const { walletAddress } = req.body;
@@ -223,8 +212,6 @@ app.post('/wallet/unblacklist', async (req, res) => {
         res.status(500).json({ message: 'Lỗi server khi thực hiện kháng cáo.' });
     }
 });
-
-// Sửa đổi: API của Admin giờ sẽ nhận cả 'whitelist'
 app.post('/admin/update-wallet', async (req, res) => {
     try {
         const { walletAddress, trustScore, riskLevel, frozen, whitelist } = req.body;
@@ -236,7 +223,7 @@ app.post('/admin/update-wallet', async (req, res) => {
         if (trustScore !== undefined) updateData.trustScore = trustScore;
         if (riskLevel !== undefined) updateData.riskLevel = riskLevel;
         if (frozen !== undefined) updateData.frozen = frozen;
-        if (whitelist !== undefined) updateData.whitelist = whitelist; // <-- THÊM MỚI
+        if (whitelist !== undefined) updateData.whitelist = whitelist;
 
         if (Object.keys(updateData).length === 0) {
             return res.status(400).json({ message: "Không có dữ liệu để cập nhật." });
@@ -257,6 +244,52 @@ app.post('/admin/update-wallet', async (req, res) => {
     } catch (error) {
         console.error("Admin Update Wallet Error:", error);
         res.status(500).json({ message: "Lỗi server khi admin cập nhật ví." });
+    }
+});
+
+// --- THÊM MỚI: API cho chức năng phân tích AI ---
+app.post('/wallet/analyze', async (req, res) => {
+    try {
+        const { walletAddress } = req.body;
+        if (!walletAddress) {
+            return res.status(400).json({ message: "Thiếu địa chỉ ví." });
+        }
+
+        const wallet = await WalletModel.findOne({ address: walletAddress });
+        if (!wallet || wallet.history.length === 0) {
+            return res.status(200).json({ analysis: "Không có đủ dữ liệu giao dịch để phân tích." });
+        }
+        
+        // --- Mô phỏng quá trình phân tích của AI ---
+        // Trong một ứng dụng thật, đây là nơi bạn sẽ gọi đến API của một mô hình AI
+        // và gửi dữ liệu `wallet.history` để xử lý.
+
+        const txCount = wallet.history.length;
+        const totalSent = wallet.history.reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+        const uniqueRecipients = new Set(wallet.history.map(tx => tx.recipient)).size;
+        
+        let analysisText = `**Báo cáo Phân tích AI cho ví:**\n\n`;
+        analysisText += `- **Tổng quan:** Ví này đã thực hiện **${txCount}** giao dịch được ghi nhận với tổng khối lượng là **${totalSent.toFixed(4)} ETH**.\n`;
+        analysisText += `- **Hành vi:** Giao dịch đã được gửi đến **${uniqueRecipients}** địa chỉ ví khác nhau.\n`;
+        
+        if (wallet.trustScore > 700) {
+            analysisText += `- **Đánh giá:** Đây là một ví hoạt động tích cực với điểm tin cậy cao. Các giao dịch có xu hướng an toàn, với số lượng nhỏ và thường xuyên. Không phát hiện hành vi đáng ngờ nào.\n`;
+        } else if (wallet.trustScore < 300) {
+            analysisText += `- **Cảnh báo:** Ví này có điểm tin cậy thấp. Lịch sử cho thấy có các giao dịch dẫn đến việc bị trừ điểm mạnh, có thể do tương tác với các ví rủi ro hoặc thực hiện giao dịch với khối lượng lớn bất thường. Cần giám sát cẩn thận.\n`;
+        } else {
+            analysisText += `- **Nhận xét:** Ví có mức độ hoạt động trung bình. Điểm tin cậy ở mức ổn định. Cần theo dõi thêm các giao dịch trong tương lai để có đánh giá chính xác hơn.\n`;
+        }
+
+        if(wallet.unblacklistCount > 0) {
+            analysisText += `- **Lưu ý đặc biệt:** Ví này đã từng bị đưa vào danh sách đen và đã thực hiện kháng cáo **${wallet.unblacklistCount}** lần. Đây là một yếu tố cần được xem xét cẩn thận khi đánh giá rủi ro.\n`;
+        }
+
+        // Trả về kết quả mô phỏng
+        res.status(200).json({ analysis: analysisText });
+
+    } catch (error) {
+        console.error("AI Analysis Error:", error);
+        res.status(500).json({ message: "Lỗi server khi thực hiện phân tích." });
     }
 });
 
