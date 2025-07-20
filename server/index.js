@@ -270,7 +270,6 @@ app.post('/wallet/analyze', async (req, res) => {
         
         const { history, trustScore, unblacklistCount, frozen, riskLevel } = wallet;
 
-        // Trả về trạng thái cơ bản trước
         const status = { trustScore, riskLevel, frozen, unblacklistCount };
 
         if (history.length === 0) {
@@ -278,10 +277,11 @@ app.post('/wallet/analyze', async (req, res) => {
         }
         
         const txCount = history.length;
-        const totalSent = history.reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+        // Sửa lỗi tính toán số lớn
+        const totalSent = history.reduce((sum, tx) => sum + Number(tx.amount), 0);
         const uniqueRecipients = new Set(history.map(tx => tx.recipient)).size;
         const avgTxAmount = totalSent / txCount;
-        const largestTx = Math.max(...history.map(tx => parseFloat(tx.amount)));
+        const largestTx = Math.max(...history.map(tx => Number(tx.amount)));
         const negativeTxs = history.filter(tx => tx.scoreImpact < 0);
 
         let analysisText = `### Báo cáo Phân tích AI\n\n`;
@@ -305,6 +305,7 @@ app.post('/wallet/analyze', async (req, res) => {
         }
 
         analysisText += `#### Đánh giá & Đề xuất\n`;
+        // Sửa đổi logic đánh giá
         if (unblacklistCount > 1 || trustScore < 100) {
              analysisText += `> **Kết luận:** Mức độ rủi ro **Rất Cao**. Ví này có tiền sử kháng cáo nhiều lần hoặc đang bị chặn. Giao dịch với ví này tiềm ẩn nguy cơ lớn.\n> **Đề xuất:** **KHÔNG** nên thực hiện giao dịch với ví này.`;
         } else if (trustScore < 300 || unblacklistCount > 0) {
