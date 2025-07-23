@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
+const fetch = require('node-fetch'); // Thêm thư viện để gọi API
 
 // Khởi tạo ứng dụng Express
 const app = express();
@@ -41,6 +42,7 @@ const UserSchema = new mongoose.Schema({
     wallets: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Wallet' }]
 });
 
+// Thêm trường 'tags' để lưu dữ liệu từ API bên ngoài
 const WalletSchema = new mongoose.Schema({
     address: { type: String, required: true, unique: true },
     trustScore: { type: Number, default: 500 },
@@ -49,7 +51,8 @@ const WalletSchema = new mongoose.Schema({
     frozen: { type: Boolean, default: false },
     whitelist: { type: Boolean, default: false },
     history: { type: Array, default: [] },
-    owner_username: { type: String, required: true, lowercase: true }
+    owner_username: { type: String, required: true, lowercase: true },
+    tags: { type: [String], default: [] } // <-- THÊM MỚI
 });
 
 // --- Tạo Models ---
@@ -150,10 +153,10 @@ app.post('/wallet/connect', async (req, res) => {
         if (!username || !walletAddress) return res.status(400).json({ message: "Thiếu username hoặc walletAddress." });
         const user = await UserModel.findOne({ username: username.toLowerCase() });
         if (!user) return res.status(404).json({ message: "Không tìm thấy người dùng." });
-        let wallet = await WalletModel.findOne({ address: walletAddress.toLowerCase() }); // Luôn tìm kiếm bằng lowercase
+        let wallet = await WalletModel.findOne({ address: walletAddress.toLowerCase() });
         if (!wallet) {
             wallet = await WalletModel.create({
-                address: walletAddress.toLowerCase(), // Luôn lưu bằng lowercase
+                address: walletAddress.toLowerCase(),
                 owner_username: user.username
             });
         }
@@ -246,8 +249,6 @@ app.post('/admin/update-wallet', async (req, res) => {
         res.status(500).json({ message: "Lỗi server khi admin cập nhật ví." });
     }
 });
-
-// --- SỬA LỖI: API Phân tích AI giờ sẽ tìm kiếm không phân biệt chữ hoa/thường ---
 app.post('/wallet/analyze', async (req, res) => {
     try {
         const { walletAddress } = req.body;
@@ -255,9 +256,7 @@ app.post('/wallet/analyze', async (req, res) => {
             return res.status(400).json({ message: "Thiếu địa chỉ ví." });
         }
 
-        // Chuyển địa chỉ nhận được về chữ thường trước khi tìm kiếm
         const wallet = await WalletModel.findOne({ address: walletAddress.toLowerCase() });
-        
         if (!wallet) {
              return res.status(200).json({ 
                 status: {
@@ -327,6 +326,78 @@ app.post('/wallet/analyze', async (req, res) => {
     } catch (error) {
         console.error("AI Analysis Error:", error);
         res.status(500).json({ message: "Lỗi server khi thực hiện phân tích." });
+    }
+});
+
+// --- THÊM MỚI: API để làm giàu dữ liệu từ Etherscan ---
+app.post('/admin/enrich-data-etherscan', async (req, res) => {
+    try {
+        const { walletAddress } = req.body;
+        if (!walletAddress) {
+            return res.status(400).json({ message: "Thiếu địa chỉ ví." });
+        }
+        if (!process.env.ETHERSCAN_API_KEY) {
+            return res.status(500).json({ message: "Thiếu Etherscan API Key trên server." });
+        }
+
+        // Gọi API Etherscan để lấy lịch sử giao dịch
+        const apiUrl = `https://api-sepolia.etherscan.io/api?module=account&action=txlist&address=${walletAddress}&startblock=0&endblock=99999999&sort=asc&apikey=${process.env.ETHERSCAN_API_KEY}`;
+        
+        const etherscanResponse = await fetch(apiUrl);
+        const data = await etherscanResponse.json();
+
+        if (data.status !== "1") {
+            // Nếu API trả về lỗi (ví dụ: không có giao dịch), vẫn coi là thành công nhưng không thêm tag
+            if (data.message === "No transactions found") {
+                const newTags = ["Ví Chưa Có Giao Dịch (Etherscan)"];
+                 const updatedWallet = await WalletModel.findOneAndUpdate(
+                    { address: walletAddress.toLowerCase() },
+                    { $addToSet: { tags: { $each: newTags } } },
+                    { new: true, upsert: true, setDefaultsOnInsert: true }
+                );
+                return res.status(200).json({ 
+                    message: `Làm giàu dữ liệu thành công! Đã thêm nhãn: ${newTags.join(', ')}`,
+                    wallet: updatedWallet
+                });
+            }
+            throw new Error(data.message || "Lỗi khi gọi Etherscan API.");
+        }
+
+        const transactions = data.result;
+        const newTags = new Set();
+
+        // Logic phân tích dữ liệu từ Etherscan
+        if (transactions.length > 50) {
+            newTags.add("Hoạt Động Thường Xuyên (Etherscan)");
+        }
+        const firstTxTimestamp = parseInt(transactions[0].timeStamp);
+        const ageInDays = (Date.now() / 1000 - firstTxTimestamp) / 86400;
+
+        if (ageInDays < 7) {
+            newTags.add("Ví Mới (Etherscan)");
+        } else if (ageInDays > 365) {
+            newTags.add("Ví Lâu Năm (Etherscan)");
+        }
+        
+        const tagsArray = Array.from(newTags);
+        if (tagsArray.length === 0) {
+            return res.status(200).json({ message: "Không có nhãn mới nào để thêm từ Etherscan." });
+        }
+
+        const updatedWallet = await WalletModel.findOneAndUpdate(
+            { address: walletAddress.toLowerCase() },
+            { $addToSet: { tags: { $each: tagsArray } } },
+            { new: true, upsert: true, setDefaultsOnInsert: true }
+        );
+
+        res.status(200).json({ 
+            message: `Làm giàu dữ liệu thành công! Đã thêm các nhãn: ${tagsArray.join(', ')}`,
+            wallet: updatedWallet
+        });
+
+    } catch (error) {
+        console.error("Enrich Data Etherscan Error:", error);
+        res.status(500).json({ message: "Lỗi server khi làm giàu dữ liệu từ Etherscan." });
     }
 });
 
