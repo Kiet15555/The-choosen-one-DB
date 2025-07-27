@@ -58,6 +58,12 @@ const UserModel = mongoose.model("User", UserSchema);
 const WalletModel = mongoose.model("Wallet", WalletSchema);
 
 // --- API Endpoints ---
+
+// THÊM MỚI: Route gốc cho Health Check của Render
+app.get('/', (req, res) => {
+  res.status(200).send('Detectus Backend is live and healthy!');
+});
+
 // Giữ nguyên các API cũ của bạn ở đây...
 app.get('/bot', (req, res) => res.status(200).json({message: "ok"}));
 app.post('/register', async (req, res) => {
