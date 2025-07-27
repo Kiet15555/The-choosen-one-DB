@@ -76,7 +76,7 @@ const seedDatabase = async () => {
         const OWNER_USERNAME = 'testuser@detectus.com';
 
         console.log('🔄 Deleting old wallet data...');
-        await WalletModel.deleteMany({});
+        //await WalletModel.deleteMany({});
         console.log('👍 Old data deleted.');
 
         const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
