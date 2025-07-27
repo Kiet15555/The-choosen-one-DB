@@ -391,7 +391,7 @@ app.post('/admin/enrich-data-etherscan', async (req, res) => {
     }
 });
 
-// --- MỚI: API KIỂM TRA RỦI RO ĐA LỚP ---
+// --- SỬA LỖI & NÂNG CẤP: API KIỂM TRA RỦI RO ĐA LỚP ---
 app.post('/wallet/analyze-risk-comprehensive', async (req, res) => {
     try {
         const { walletAddress } = req.body;
@@ -411,11 +411,11 @@ app.post('/wallet/analyze-risk-comprehensive', async (req, res) => {
             }
             if (internalWalletData.trustScore < 200) { // Ngưỡng rủi ro cao
                 isScam = true;
-                riskDetails.push(`Điểm tin cậy Detectus rất thấp (${internalWalletData.trustScore})`);
+                riskDetails.push(`Điểm tin cậy Detectus thấp (${internalWalletData.trustScore})`);
             }
         }
         
-        // Lớp 2: Kiểm tra GoPlus Security API
+        // Lớp 2: Kiểm tra GoPlus Security API (Logic quét toàn diện)
         try {
             const goPlusUrl = `https://api.gopluslabs.io/api/v1/address_security/${walletAddress}?chain_id=1`;
             const goPlusResponse = await fetch(goPlusUrl);
@@ -423,27 +423,35 @@ app.post('/wallet/analyze-risk-comprehensive', async (req, res) => {
                 const goPlusData = await goPlusResponse.json();
                 if (goPlusData.code === 1 && goPlusData.result && goPlusData.result[walletAddress.toLowerCase()]) {
                     const result = goPlusData.result[walletAddress.toLowerCase()];
-                    if (result.cybercrime === "1" || result.financial_crime === "1" || result.blacklist_doubt === "1" || result.stealing_attack === "1" || result.honeypot_related_address === "1") {
+                    
+                    // Danh sách đầy đủ các loại rủi ro cần kiểm tra
+                    const riskFlags = {
+                        "money_laundering": "Rửa tiền",
+                        "phishing_activities": "Hoạt động lừa đảo",
+                        "blacklist_doubt": "Nghi ngờ trong blacklist",
+                        "stealing_attack": "Tấn công đánh cắp",
+                        "fake_kyc": "Giả mạo KYC",
+                        "honeypot_related_address": "Liên quan đến Honeypot",
+                        "cybercrime": "Tội phạm mạng",
+                        "financial_crime": "Tội phạm tài chính",
+                        "darkweb_transactions": "Giao dịch Darkweb",
+                        "sanctioned": "Bị cấm vận" // Thêm mục này, rất quan trọng
+                    };
+
+                    let foundRisks = [];
+                    for (const flag in riskFlags) {
+                        if (result[flag] === "1") {
+                            foundRisks.push(riskFlags[flag]);
+                        }
+                    }
+
+                    if(foundRisks.length > 0) {
                         isScam = true;
-                        riskDetails.push("Gắn cờ bởi GoPlus Security");
+                        riskDetails.push(`GoPlus: ${foundRisks.join(', ')}`);
                     }
                 }
             }
         } catch (e) { console.error("GoPlus API check failed:", e.message); }
-
-
-        // Lớp 3: Kiểm tra nhãn trên Etherscan (yêu cầu API Key)
-        if (process.env.ETHERSCAN_API_KEY) {
-            try {
-                const etherscanUrl = `https://api.etherscan.io/api?module=account&action=txlist&address=${walletAddress}&startblock=0&endblock=1&page=1&offset=1&sort=asc&apikey=${process.env.ETHERSCAN_API_KEY}`;
-                const etherscanResponse = await fetch(etherscanUrl);
-                 if (etherscanResponse.ok) {
-                    // Etherscan không có API trực tiếp lấy tag, nhưng ta có thể kiểm tra các tên miền .eth hoặc các thông tin khác nếu có
-                    // Đây là một ví dụ đơn giản, thực tế cần các kỹ thuật phức tạp hơn hoặc dịch vụ chuyên dụng
-                 }
-            } catch (e) { console.error("Etherscan check failed:", e.message); }
-        }
-
 
         res.status(200).json({
             is_scam: isScam,
