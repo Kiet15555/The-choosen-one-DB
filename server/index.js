@@ -70,22 +70,26 @@ const seedDatabase = async () => {
     try {
         console.log('--- [START] Database Seeding Process ---');
         
-        // CẬP NHẬT SỐ LƯỢNG VÍ THEO YÊU CẦU MỚI
         const NUM_SAFE_WALLETS = 100;
         const NUM_SUSPICIOUS_WALLETS = 75;
         const NUM_BLOCKED_WALLETS = 25;
 
-        console.log('🔄 Deleting old wallet data...');
-        await WalletModel.deleteMany({});
-        console.log('👍 Old data deleted.');
+        console.log('🔄 Deleting old generated data...');
+        // Chỉ xóa các ví và user được tạo ra bởi kịch bản này
+        await WalletModel.deleteMany({ tags: { $in: ['Generated-safe', 'Generated-suspicious', 'Generated-blocked'] } });
+        await UserModel.deleteMany({ username: /@generated-wallets\.com$/ });
+        console.log('👍 Old generated data deleted.');
 
         const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
-        const generateWallets = (count, type) => {
+        const generateData = (count, type) => {
             const wallets = [];
+            const users = [];
+            const salt = bcrypt.genSaltSync(10);
+            const hashedPassword = bcrypt.hashSync('password123', salt); // Mật khẩu mặc định cho tất cả user giả
+
             for (let i = 0; i < count; i++) {
                 const randomWallet = ethers.Wallet.createRandom();
-                // TẠO GMAIL GIẢ NGẪU NHIÊN CHO MỖI VÍ
                 const fakeOwnerEmail = `user_${randomWallet.address.slice(2, 12).toLowerCase()}@generated-wallets.com`;
                 
                 let trustScore, riskLevel, frozen;
@@ -100,27 +104,38 @@ const seedDatabase = async () => {
                         trustScore = getRandomInt(0, 100); riskLevel = 'Bị Chặn'; frozen = true;
                         break;
                 }
+
+                // Tạo dữ liệu cho ví
                 wallets.push({
                     address: randomWallet.address.toLowerCase(), 
                     trustScore, 
                     riskLevel, 
                     frozen,
-                    owner_username: fakeOwnerEmail, // SỬ DỤNG GMAIL GIẢ
+                    owner_username: fakeOwnerEmail,
                     unblacklistCount: type === 'blocked' ? getRandomInt(1, 5) : 0,
                     tags: [`Generated-${type}`]
                 });
+
+                // Tạo dữ liệu cho user tương ứng
+                users.push({
+                    username: fakeOwnerEmail,
+                    password: hashedPassword,
+                    isVerified: true, // Mặc định là đã xác thực để dễ sử dụng
+                });
             }
-            return wallets;
+            return { wallets, users };
         };
 
-        const allWallets = [
-            ...generateWallets(NUM_SAFE_WALLETS, 'safe'),
-            ...generateWallets(NUM_SUSPICIOUS_WALLETS, 'suspicious'),
-            ...generateWallets(NUM_BLOCKED_WALLETS, 'blocked')
-        ];
+        const safeData = generateData(NUM_SAFE_WALLETS, 'safe');
+        const suspiciousData = generateData(NUM_SUSPICIOUS_WALLETS, 'suspicious');
+        const blockedData = generateData(NUM_BLOCKED_WALLETS, 'blocked');
 
-        console.log(`💾 Inserting ${allWallets.length} new wallets...`);
+        const allWallets = [...safeData.wallets, ...suspiciousData.wallets, ...blockedData.wallets];
+        const allUsers = [...safeData.users, ...suspiciousData.users, ...blockedData.users];
+
+        console.log(`💾 Inserting ${allWallets.length} new wallets and ${allUsers.length} new users...`);
         await WalletModel.insertMany(allWallets);
+        await UserModel.insertMany(allUsers);
         console.log('🎉 --- [SUCCESS] Database Seeding Completed ---');
         return true;
     } catch (error) {
@@ -133,7 +148,7 @@ const seedDatabase = async () => {
 app.get('/seed-database', async (req, res) => {
     const success = await seedDatabase();
     if (success) {
-        res.status(200).send('<h1>Database seeding completed successfully!</h1><p>200 wallets (100 safe, 75 suspicious, 25 blocked) have been added to your database. You can now close this page.</p>');
+        res.status(200).send('<h1>Database seeding completed successfully!</h1><p>200 wallets (100 safe, 75 suspicious, 25 blocked) and 200 corresponding users have been added to your database. You can now close this page.</p>');
     } else {
         res.status(500).send('<h1>Error: Database seeding failed.</h1><p>Check the server logs on Render.com for more details.</p>');
     }
