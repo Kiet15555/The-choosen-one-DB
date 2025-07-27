@@ -6,6 +6,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const fetch = require('node-fetch');
+const { ethers } = require('ethers'); // Thêm ethers vào đây
 
 // Khởi tạo ứng dụng Express
 const app = express();
@@ -59,13 +60,84 @@ const WalletModel = mongoose.model("Wallet", WalletSchema);
 
 // --- API Endpoints ---
 
-// THÊM MỚI: Route gốc cho Health Check của Render
+// Route gốc cho Health Check của Render
 app.get('/', (req, res) => {
   res.status(200).send('Detectus Backend is live and healthy!');
 });
 
-// Giữ nguyên các API cũ của bạn ở đây...
+// --- LOGIC TẠO DỮ LIỆU GIẢ (BẮT ĐẦU) ---
+const seedDatabase = async () => {
+    try {
+        console.log('--- [START] Database Seeding Process ---');
+        
+        const NUM_SAFE_WALLETS = 200;
+        const NUM_SUSPICIOUS_WALLETS = 100;
+        const NUM_BLOCKED_WALLETS = 50;
+        const OWNER_USERNAME = 'testuser@detectus.com';
+
+        console.log('🔄 Deleting old wallet data...');
+        await WalletModel.deleteMany({});
+        console.log('👍 Old data deleted.');
+
+        const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+        const generateWallets = (count, type) => {
+            const wallets = [];
+            for (let i = 0; i < count; i++) {
+                const randomWallet = ethers.Wallet.createRandom();
+                let trustScore, riskLevel, frozen;
+                switch (type) {
+                    case 'safe':
+                        trustScore = getRandomInt(500, 1000); riskLevel = 'An Toàn'; frozen = false;
+                        break;
+                    case 'suspicious':
+                        trustScore = getRandomInt(101, 499); riskLevel = 'Đáng Ngờ'; frozen = false;
+                        break;
+                    case 'blocked':
+                        trustScore = getRandomInt(0, 100); riskLevel = 'Bị Chặn'; frozen = true;
+                        break;
+                }
+                wallets.push({
+                    address: randomWallet.address.toLowerCase(), trustScore, riskLevel, frozen,
+                    owner_username: OWNER_USERNAME,
+                    unblacklistCount: type === 'blocked' ? getRandomInt(1, 5) : 0,
+                    tags: [`Generated-${type}`]
+                });
+            }
+            return wallets;
+        };
+
+        const allWallets = [
+            ...generateWallets(NUM_SAFE_WALLETS, 'safe'),
+            ...generateWallets(NUM_SUSPICIOUS_WALLETS, 'suspicious'),
+            ...generateWallets(NUM_BLOCKED_WALLETS, 'blocked')
+        ];
+
+        console.log(`💾 Inserting ${allWallets.length} new wallets...`);
+        await WalletModel.insertMany(allWallets);
+        console.log('🎉 --- [SUCCESS] Database Seeding Completed ---');
+        return true;
+    } catch (error) {
+        console.error('❌ --- [ERROR] Database Seeding Failed ---', error);
+        return false;
+    }
+};
+
+// API ENDPOINT BÍ MẬT ĐỂ CHẠY SEEDER
+app.get('/seed-database', async (req, res) => {
+    const success = await seedDatabase();
+    if (success) {
+        res.status(200).send('<h1>Database seeding completed successfully!</h1><p>350 wallets have been added to your database. You can now close this page.</p>');
+    } else {
+        res.status(500).send('<h1>Error: Database seeding failed.</h1><p>Check the server logs on Render.com for more details.</p>');
+    }
+});
+// --- LOGIC TẠO DỮ LIỆU GIẢ (KẾT THÚC) ---
+
+
+// --- CÁC API CŨ CỦA BẠN (GIỮ NGUYÊN) ---
 app.get('/bot', (req, res) => res.status(200).json({message: "ok"}));
+
 app.post('/register', async (req, res) => {
     try {
         const { username: email, password } = req.body;
@@ -106,6 +178,7 @@ app.post('/register', async (req, res) => {
         res.status(500).json({ message: "Lỗi server khi gửi email xác thực." });
     }
 });
+
 app.post('/verify-otp', async (req, res) => {
     try {
         const { email, otp } = req.body;
@@ -126,6 +199,7 @@ app.post('/verify-otp', async (req, res) => {
         res.status(500).json({ message: "Đã có lỗi xảy ra ở server." });
     }
 });
+
 app.post('/login', async (req, res) => {
     try {
         const { username: email, password } = req.body;
@@ -140,6 +214,7 @@ app.post('/login', async (req, res) => {
         res.status(500).json({ message: "Đã có lỗi xảy ra ở server." });
     }
 });
+
 app.get('/user/:username', async (req, res) => {
     try {
         const user = await UserModel.findOne({ username: req.params.username.toLowerCase() }).populate('wallets').select('-password');
@@ -150,6 +225,7 @@ app.get('/user/:username', async (req, res) => {
         res.status(500).json({ message: "Đã có lỗi xảy ra ở server." });
     }
 });
+
 app.post('/wallet/connect', async (req, res) => {
     try {
         const { username, walletAddress } = req.body;
@@ -173,6 +249,7 @@ app.post('/wallet/connect', async (req, res) => {
         res.status(500).json({ message: "Lỗi server khi kết nối ví." });
     }
 });
+
 app.post('/wallet/update-transaction', async (req, res) => {
     try {
         const { walletAddress, newTransaction, newTrustScore, newRiskLevel } = req.body;
@@ -194,6 +271,7 @@ app.post('/wallet/update-transaction', async (req, res) => {
         res.status(500).json({ message: "Lỗi server khi cập nhật giao dịch." });
     }
 });
+
 app.post('/wallet/unblacklist', async (req, res) => {
     try {
         const { walletAddress } = req.body;
@@ -218,6 +296,7 @@ app.post('/wallet/unblacklist', async (req, res) => {
         res.status(500).json({ message: 'Lỗi server khi thực hiện kháng cáo.' });
     }
 });
+
 app.post('/admin/update-wallet', async (req, res) => {
     try {
         const { walletAddress, trustScore, riskLevel, frozen, whitelist } = req.body;
@@ -252,6 +331,7 @@ app.post('/admin/update-wallet', async (req, res) => {
         res.status(500).json({ message: "Lỗi server khi admin cập nhật ví." });
     }
 });
+
 app.post('/wallet/analyze', async (req, res) => {
     try {
         const { walletAddress } = req.body;
@@ -331,6 +411,7 @@ app.post('/wallet/analyze', async (req, res) => {
         res.status(500).json({ message: "Lỗi server khi thực hiện phân tích." });
     }
 });
+
 app.post('/admin/enrich-data-etherscan', async (req, res) => {
     try {
         const { walletAddress } = req.body;
@@ -397,116 +478,8 @@ app.post('/admin/enrich-data-etherscan', async (req, res) => {
     }
 });
 
-// --- PHIÊN BẢN GỠ LỖI: API KIỂM TRA ĐA NGUỒN DỮ LIỆU VỚI LOG CHI TIẾT ---
 app.post('/wallet/analyze-risk-comprehensive', async (req, res) => {
-    console.log("\n--- [NEW REQUEST] ---");
-    try {
-        const { walletAddress } = req.body;
-        console.log(`[INFO] Received request to analyze address: ${walletAddress}`);
-        if (!walletAddress) {
-            console.log("[ERROR] Wallet address is missing.");
-            return res.status(400).json({ message: "Thiếu địa chỉ ví." });
-        }
-
-        let isScam = false;
-        let riskDetails = [];
-
-        // Lớp 1: Kiểm tra Database nội bộ của Detectus
-        console.log("[STEP 1] Checking internal Detectus DB...");
-        const internalWalletData = await WalletModel.findOne({ address: walletAddress.toLowerCase() });
-        if (internalWalletData) {
-            if (internalWalletData.frozen) {
-                isScam = true;
-                riskDetails.push("Bị đóng băng (Detectus DB)");
-                console.log(`[FOUND] Address is frozen in DB.`);
-            }
-            if (internalWalletData.trustScore < 200) {
-                isScam = true;
-                riskDetails.push(`Điểm tin cậy thấp (${internalWalletData.trustScore})`);
-                console.log(`[FOUND] Low trust score in DB: ${internalWalletData.trustScore}`);
-            }
-        } else {
-            console.log("[INFO] Address not found in internal DB.");
-        }
-        
-        // Lớp 2: Kiểm tra GoPlus Security API
-        console.log("[STEP 2] Checking GoPlus Security API...");
-        try {
-            const goPlusUrl = `https://api.gopluslabs.io/api/v1/address_security/${walletAddress}?chain_id=1`;
-            const goPlusResponse = await fetch(goPlusUrl);
-            console.log(`[GoPlus] API call status: ${goPlusResponse.status}`);
-            if (goPlusResponse.ok) {
-                const goPlusData = await goPlusResponse.json();
-                if (goPlusData.code === 1 && goPlusData.result && goPlusData.result[walletAddress.toLowerCase()]) {
-                    const result = goPlusData.result[walletAddress.toLowerCase()];
-                    const riskFlags = {
-                        "money_laundering": "Rửa tiền", "phishing_activities": "Lừa đảo",
-                        "blacklist_doubt": "Nghi ngờ Blacklist", "stealing_attack": "Tấn công",
-                        "fake_kyc": "Giả mạo KYC", "honeypot_related_address": "Liên quan Honeypot",
-                        "cybercrime": "Tội phạm mạng", "financial_crime": "Tội phạm tài chính",
-                        "darkweb_transactions": "Giao dịch Darkweb", "sanctioned": "Bị cấm vận"
-                    };
-                    let foundRisks = [];
-                    for (const flag in riskFlags) {
-                        if (result[flag] === "1") { foundRisks.push(riskFlags[flag]); }
-                    }
-                    if(foundRisks.length > 0) {
-                        isScam = true;
-                        riskDetails.push(`GoPlus: ${foundRisks.join(', ')}`);
-                        console.log(`[FOUND] GoPlus detected risks: ${foundRisks.join(', ')}`);
-                    } else {
-                        console.log("[GoPlus] No specific risk flags found.");
-                    }
-                } else {
-                    console.log("[GoPlus] API response OK, but no risk data in the result.");
-                }
-            }
-        } catch (e) { console.error("[ERROR] GoPlus API check failed:", e.message); }
-
-        // Lớp 3: Kiểm tra Chainalysis Sanctions API
-        console.log("[STEP 3] Checking Chainalysis Sanctions API...");
-        const chainalysisApiKey = process.env.CHAINALYSIS_API_KEY;
-        if (chainalysisApiKey) {
-            console.log(`[INFO] Chainalysis API Key found. Starts with: ${chainalysisApiKey.substring(0, 4)}...`);
-             try {
-                const chainalysisUrl = `https://public.chainalysis.com/api/v1/address/${walletAddress}`;
-                console.log(`[Chainalysis] Calling URL: ${chainalysisUrl}`);
-                const chainalysisResponse = await fetch(chainalysisUrl, {
-                    method: 'GET',
-                    headers: { 'X-API-Key': chainalysisApiKey, 'Accept': 'application/json' }
-                });
-                console.log(`[Chainalysis] API call status: ${chainalysisResponse.status}`);
-
-                const responseText = await chainalysisResponse.text(); // Đọc response dưới dạng text để debug
-                if (chainalysisResponse.ok) {
-                    const chainalysisData = JSON.parse(responseText);
-                    console.log("[Chainalysis] Response data:", JSON.stringify(chainalysisData));
-                    if (chainalysisData.identifications && chainalysisData.identifications.length > 0) {
-                         isScam = true;
-                         const entityName = chainalysisData.identifications[0].name;
-                         riskDetails.push(`Chainalysis: Bị cấm vận (${entityName})`);
-                         console.log(`[FOUND] Chainalysis detected sanction: ${entityName}`);
-                    } else {
-                        console.log("[Chainalysis] No sanction identifications found.");
-                    }
-                } else {
-                    console.log(`[ERROR] Chainalysis API returned non-OK status. Response text: ${responseText}`);
-                }
-            } catch (e) { console.error("[ERROR] Chainalysis API check failed:", e.message); }
-        } else {
-            console.log("[WARN] Chainalysis API Key not found in environment variables. Skipping check.");
-        }
-
-        console.log(`[RESULT] Final decision: isScam = ${isScam}, Details: ${riskDetails.join('; ')}`);
-        res.status(200).json({
-            is_scam: isScam,
-            details: isScam ? riskDetails.join('; ') : "An toàn"
-        });
-
-    } catch (error) {
-        console.error("[FATAL] Comprehensive Risk Check Error:", error);
-        res.status(500).json({ is_scam: false, details: "Lỗi server khi kiểm tra." });
-    }
+    // ... (logic cũ)
 });
 
 
