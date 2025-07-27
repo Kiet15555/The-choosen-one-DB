@@ -70,13 +70,13 @@ const seedDatabase = async () => {
     try {
         console.log('--- [START] Database Seeding Process ---');
         
-        const NUM_SAFE_WALLETS = 200;
-        const NUM_SUSPICIOUS_WALLETS = 100;
-        const NUM_BLOCKED_WALLETS = 50;
-        const OWNER_USERNAME = 'testuser@detectus.com';
+        // CẬP NHẬT SỐ LƯỢNG VÍ THEO YÊU CẦU MỚI
+        const NUM_SAFE_WALLETS = 100;
+        const NUM_SUSPICIOUS_WALLETS = 75;
+        const NUM_BLOCKED_WALLETS = 25;
 
         console.log('🔄 Deleting old wallet data...');
-        //await WalletModel.deleteMany({});
+        await WalletModel.deleteMany({});
         console.log('👍 Old data deleted.');
 
         const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
@@ -85,6 +85,9 @@ const seedDatabase = async () => {
             const wallets = [];
             for (let i = 0; i < count; i++) {
                 const randomWallet = ethers.Wallet.createRandom();
+                // TẠO GMAIL GIẢ NGẪU NHIÊN CHO MỖI VÍ
+                const fakeOwnerEmail = `user_${randomWallet.address.slice(2, 12).toLowerCase()}@generated-wallets.com`;
+                
                 let trustScore, riskLevel, frozen;
                 switch (type) {
                     case 'safe':
@@ -98,8 +101,11 @@ const seedDatabase = async () => {
                         break;
                 }
                 wallets.push({
-                    address: randomWallet.address.toLowerCase(), trustScore, riskLevel, frozen,
-                    owner_username: OWNER_USERNAME,
+                    address: randomWallet.address.toLowerCase(), 
+                    trustScore, 
+                    riskLevel, 
+                    frozen,
+                    owner_username: fakeOwnerEmail, // SỬ DỤNG GMAIL GIẢ
                     unblacklistCount: type === 'blocked' ? getRandomInt(1, 5) : 0,
                     tags: [`Generated-${type}`]
                 });
@@ -127,7 +133,7 @@ const seedDatabase = async () => {
 app.get('/seed-database', async (req, res) => {
     const success = await seedDatabase();
     if (success) {
-        res.status(200).send('<h1>Database seeding completed successfully!</h1><p>350 wallets have been added to your database. You can now close this page.</p>');
+        res.status(200).send('<h1>Database seeding completed successfully!</h1><p>200 wallets (100 safe, 75 suspicious, 25 blocked) have been added to your database. You can now close this page.</p>');
     } else {
         res.status(500).send('<h1>Error: Database seeding failed.</h1><p>Check the server logs on Render.com for more details.</p>');
     }
