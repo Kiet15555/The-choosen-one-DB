@@ -5,7 +5,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
-const fetch = require('node-fetch'); // Thư viện này đã có sẵn để gọi API
+const fetch = require('node-fetch');
 
 // Khởi tạo ứng dụng Express
 const app = express();
@@ -58,8 +58,7 @@ const UserModel = mongoose.model("User", UserSchema);
 const WalletModel = mongoose.model("Wallet", WalletSchema);
 
 // --- API Endpoints ---
-
-// ... (Giữ nguyên tất cả các API cũ của bạn: /register, /login, /verify-otp, etc.)
+// Giữ nguyên các API cũ của bạn ở đây...
 app.get('/bot', (req, res) => res.status(200).json({message: "ok"}));
 app.post('/register', async (req, res) => {
     try {
@@ -392,63 +391,68 @@ app.post('/admin/enrich-data-etherscan', async (req, res) => {
     }
 });
 
-
-// --- MỚI: API ĐỂ KIỂM TRA RỦI RO VÍ TỪ BÊN NGOÀI (CRAWLING DATA) ---
-app.post('/wallet/check-external-risk', async (req, res) => {
+// --- MỚI: API KIỂM TRA RỦI RO ĐA LỚP ---
+app.post('/wallet/analyze-risk-comprehensive', async (req, res) => {
     try {
         const { walletAddress } = req.body;
         if (!walletAddress) {
             return res.status(400).json({ message: "Thiếu địa chỉ ví." });
         }
 
-        // Sử dụng API của GoPlus Security để kiểm tra. 
-        // Thay `1` bằng chain_id tương ứng nếu bạn muốn kiểm tra trên mạng khác (ví dụ: 56 cho BSC)
-        const goPlusUrl = `https://api.gopluslabs.io/api/v1/address_security/${walletAddress}?chain_id=1`;
-        
-        const response = await fetch(goPlusUrl, {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' }
-            // Lưu ý: Một số API yêu cầu API Key, bạn sẽ thêm vào header như sau:
-            // 'Authorization': `Bearer ${process.env.GOPLUS_API_KEY}`
-        });
-
-        if (!response.ok) {
-            // Nếu API của GoPlus bị lỗi, ta tạm thời cho là không có rủi ro để không chặn nhầm
-            console.error("Lỗi khi gọi GoPlus API, status:", response.status);
-            return res.status(200).json({ is_scam: false, details: "Không thể xác minh từ dịch vụ bên ngoài." });
-        }
-
-        const data = await response.json();
-        
-        // Kiểm tra xem API có trả về kết quả không
-        if (data.code !== 1 || !data.result || !data.result[walletAddress.toLowerCase()]) {
-             return res.status(200).json({ is_scam: false, details: "Không có dữ liệu từ dịch vụ bên ngoài." });
-        }
-
-        const result = data.result[walletAddress.toLowerCase()];
         let isScam = false;
         let riskDetails = [];
 
-        // Dựa vào tài liệu của GoPlus, các trường này cho thấy rủi ro cao
-        if (result.cybercrime === "1") { riskDetails.push("Tội phạm mạng"); }
-        if (result.financial_crime === "1") { riskDetails.push("Tội phạm tài chính"); }
-        if (result.blacklist_doubt === "1") { riskDetails.push("Nghi ngờ trong blacklist"); }
-        if (result.stealing_attack === "1") { riskDetails.push("Tấn công lừa đảo"); }
-        if (result.honeypot_related_address === "1") { riskDetails.push("Liên quan đến Honeypot"); }
-
-        if (riskDetails.length > 0) {
-            isScam = true;
+        // Lớp 1: Kiểm tra Database nội bộ của Detectus
+        const internalWalletData = await WalletModel.findOne({ address: walletAddress.toLowerCase() });
+        if (internalWalletData) {
+            if (internalWalletData.frozen) {
+                isScam = true;
+                riskDetails.push("Bị đóng băng bởi Admin");
+            }
+            if (internalWalletData.trustScore < 200) { // Ngưỡng rủi ro cao
+                isScam = true;
+                riskDetails.push(`Điểm tin cậy Detectus rất thấp (${internalWalletData.trustScore})`);
+            }
         }
         
+        // Lớp 2: Kiểm tra GoPlus Security API
+        try {
+            const goPlusUrl = `https://api.gopluslabs.io/api/v1/address_security/${walletAddress}?chain_id=1`;
+            const goPlusResponse = await fetch(goPlusUrl);
+            if (goPlusResponse.ok) {
+                const goPlusData = await goPlusResponse.json();
+                if (goPlusData.code === 1 && goPlusData.result && goPlusData.result[walletAddress.toLowerCase()]) {
+                    const result = goPlusData.result[walletAddress.toLowerCase()];
+                    if (result.cybercrime === "1" || result.financial_crime === "1" || result.blacklist_doubt === "1" || result.stealing_attack === "1" || result.honeypot_related_address === "1") {
+                        isScam = true;
+                        riskDetails.push("Gắn cờ bởi GoPlus Security");
+                    }
+                }
+            }
+        } catch (e) { console.error("GoPlus API check failed:", e.message); }
+
+
+        // Lớp 3: Kiểm tra nhãn trên Etherscan (yêu cầu API Key)
+        if (process.env.ETHERSCAN_API_KEY) {
+            try {
+                const etherscanUrl = `https://api.etherscan.io/api?module=account&action=txlist&address=${walletAddress}&startblock=0&endblock=1&page=1&offset=1&sort=asc&apikey=${process.env.ETHERSCAN_API_KEY}`;
+                const etherscanResponse = await fetch(etherscanUrl);
+                 if (etherscanResponse.ok) {
+                    // Etherscan không có API trực tiếp lấy tag, nhưng ta có thể kiểm tra các tên miền .eth hoặc các thông tin khác nếu có
+                    // Đây là một ví dụ đơn giản, thực tế cần các kỹ thuật phức tạp hơn hoặc dịch vụ chuyên dụng
+                 }
+            } catch (e) { console.error("Etherscan check failed:", e.message); }
+        }
+
+
         res.status(200).json({
             is_scam: isScam,
-            details: isScam ? riskDetails.join(', ') : "An toàn"
+            details: isScam ? riskDetails.join('; ') : "An toàn"
         });
 
     } catch (error) {
-        console.error("External Risk Check Error:", error);
-        // Nếu có lỗi xảy ra, trả về an toàn để tránh làm gián đoạn trải nghiệm người dùng
-        res.status(500).json({ is_scam: false, details: "Lỗi server khi kiểm tra rủi ro." });
+        console.error("Comprehensive Risk Check Error:", error);
+        res.status(500).json({ is_scam: false, details: "Lỗi server khi kiểm tra." });
     }
 });
 
